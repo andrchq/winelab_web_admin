@@ -1,0 +1,280 @@
+"use client";
+
+import { useState, useEffect } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Plus, Search, Calendar, PackageCheck, AlertCircle, FileText, ArrowRight, Check, MapPin, AlertTriangle } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { receivingService, ReceivingSession } from "@/lib/receiving-service";
+import { useWarehouses } from "@/lib/hooks";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+export default function ReceivingPage() {
+    const router = useRouter();
+    const [sessions, setSessions] = useState<ReceivingSession[]>([]);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [statusFilter, setStatusFilter] = useState<'all' | ReceivingSession['status']>('all');
+    const [warehouseFilter, setWarehouseFilter] = useState<string>('all');
+    const [problemsOnly, setProblemsOnly] = useState(false);
+    const { data: warehouses } = useWarehouses();
+
+    useEffect(() => {
+        setSessions(receivingService.getAll());
+    }, []);
+
+    const getWarehouseName = (id: string) => {
+        return warehouses?.find(w => w.id === id)?.name || id;
+    };
+
+    const getStatusColor = (status: ReceivingSession['status']) => {
+        switch (status) {
+            case 'draft': return "secondary";
+            case 'in_progress': return "default";
+            case 'completed': return "success";
+            default: return "outline";
+        }
+    };
+
+    const getStatusText = (status: ReceivingSession['status']) => {
+        switch (status) {
+            case 'draft': return "Черновик";
+            case 'in_progress': return "В процессе";
+            case 'completed': return "Завершено";
+            default: return status;
+        }
+    };
+
+    const filteredSessions = sessions.filter(session => {
+        const warehouseName = getWarehouseName(session.warehouseId);
+        const matchesSearch =
+            warehouseName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            session.warehouseId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            session.invoiceNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            session.id.toLowerCase().includes(searchTerm.toLowerCase());
+
+        const matchesStatus = statusFilter === 'all' || session.status === statusFilter;
+        const matchesWarehouse = warehouseFilter === 'all' || session.warehouseId === warehouseFilter;
+
+        const hasProblems = session.items.some(item => (item.scannedQuantity || 0) > item.quantity);
+        const matchesProblems = !problemsOnly || hasProblems;
+
+        return matchesSearch && matchesStatus && matchesWarehouse && matchesProblems;
+    });
+
+    const statusOptions = [
+        { value: 'all', label: 'Все', count: sessions.length },
+        { value: 'in_progress', label: 'В процессе', count: sessions.filter(s => s.status === 'in_progress').length },
+        { value: 'completed', label: 'Завершено', count: sessions.filter(s => s.status === 'completed').length },
+        { value: 'draft', label: 'Черновик', count: sessions.filter(s => s.status === 'draft').length },
+    ] as const;
+
+    return (
+        <div className="p-3 md:p-6 min-h-full bg-muted/5">
+            <div className="max-w-7xl mx-auto space-y-4 md:space-y-6">
+                {/* Page Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <h1 className="text-xl md:text-2xl font-bold tracking-tight">Приемка товара</h1>
+                        <p className="text-xs md:text-sm text-muted-foreground mt-0.5">
+                            Управление поступлениями на склады
+                        </p>
+                    </div>
+                    <Button onClick={() => router.push('/receiving/new')} className="gap-2 h-11 md:h-10 font-medium shadow-sm transition-all hover:shadow-md active:scale-95 w-full sm:w-auto">
+                        <Plus className="h-4 w-4" />
+                        Новая приемка
+                    </Button>
+                </div>
+
+                {/* Search & Filter Section */}
+                <Card className="border-border/50 shadow-sm overflow-hidden bg-card/30 backdrop-blur-sm">
+                    <CardContent className="p-3 md:p-5 space-y-4 md:space-y-5">
+                        {/* 1. Search Bar */}
+                        <div className="relative group">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                            <Input
+                                placeholder="Поиск по названию или накладной..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="pl-11 h-12 md:h-14 rounded-2xl bg-muted/20 border-border/50 focus-visible:ring-1 focus-visible:ring-primary/30 text-base md:text-lg font-medium transition-all shadow-inner"
+                            />
+                        </div>
+
+                        <div className="flex flex-col md:flex-row gap-4">
+                            {/* 2. Warehouse Filter */}
+                            <div className="w-full md:w-56">
+                                <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
+                                    <SelectTrigger className="h-12 md:h-14 rounded-2xl bg-muted/20 border-border/50 text-left px-4 hover:bg-muted/30 transition-all font-semibold">
+                                        <div className="flex items-center gap-2 truncate">
+                                            <MapPin className="h-4 w-4 shrink-0 text-primary/70" />
+                                            <div className="flex flex-col items-start leading-none overflow-hidden">
+                                                <span className="text-[10px] uppercase tracking-widest opacity-60 mb-0.5">Склад</span>
+                                                <SelectValue placeholder="Все склады" />
+                                            </div>
+                                        </div>
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl">
+                                        <SelectItem value="all">Все склады</SelectItem>
+                                        {warehouses?.map(w => (
+                                            <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* 3. Status Filters */}
+                            <div className="flex-1 min-w-0 bg-muted/5 rounded-2xl p-1.5 border border-border/20 flex items-center">
+                                <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 md:gap-2 w-full">
+                                    {statusOptions.map((opt) => (
+                                        <button
+                                            key={opt.value}
+                                            onClick={() => setStatusFilter(opt.value)}
+                                            className={`flex items-center justify-center gap-2 px-3 md:px-4 py-2.5 rounded-xl text-[13px] md:text-sm font-bold transition-all duration-300 ${statusFilter === opt.value
+                                                    ? 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 scale-[1.02]'
+                                                    : 'bg-transparent text-muted-foreground/80 hover:bg-muted/50 hover:text-foreground'
+                                                }`}
+                                        >
+                                            <span className="truncate">{opt.label}</span>
+                                            <span className={`flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-[10px] tabular-nums font-medium ${statusFilter === opt.value
+                                                    ? 'bg-white/20 text-white'
+                                                    : 'bg-muted-foreground/10 text-muted-foreground'
+                                                }`}>
+                                                {opt.count}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 4. Problems Toggle */}
+                        <div className="flex flex-col sm:flex-row">
+                            <button
+                                onClick={() => setProblemsOnly(!problemsOnly)}
+                                className={`flex items-center justify-center sm:justify-start gap-3 px-5 py-3 rounded-2xl border-2 transition-all duration-300 group w-full sm:w-auto ${problemsOnly
+                                        ? 'border-red-500/50 bg-red-500/5 text-red-500'
+                                        : 'border-dashed border-border/40 hover:border-emerald-500/30 hover:bg-emerald-500/5 text-muted-foreground/70'
+                                    }`}
+                            >
+                                <div className={`p-1.5 rounded-lg transition-colors ${problemsOnly ? 'bg-red-500 text-white' : 'bg-muted/50 group-hover:bg-emerald-500/10 group-hover:text-emerald-500'}`}>
+                                    <AlertTriangle className="h-4 w-4" />
+                                </div>
+                                <span className="text-sm font-bold tracking-tight">Только с расхождениями</span>
+                            </button>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Sessions List */}
+                <div className="grid gap-3 md:gap-4">
+                    {filteredSessions.map((session) => {
+                        const totalItems = session.items.reduce((s, i) => s + i.quantity, 0);
+                        const scannedItems = session.items.reduce((s, i) => s + (i.scannedQuantity || 0), 0);
+
+                        return (
+                            <Card
+                                key={session.id}
+                                className="group hover:shadow-lg hover:border-primary/20 transition-all duration-300 cursor-pointer overflow-hidden relative border-border/50"
+                                onClick={() => router.push(`/receiving/${session.id}`)}
+                            >
+                                <CardContent className="p-4 md:p-6">
+                                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 md:gap-6">
+                                        {/* Status & ID */}
+                                        <div className="flex items-start gap-4 flex-1 min-w-0">
+                                            <div className={`p-3 rounded-2xl shrink-0 transition-colors ${session.status === 'completed' ? 'bg-green-500/10 text-green-500' :
+                                                session.status === 'in_progress' ? 'bg-primary/10 text-primary' :
+                                                    'bg-muted/50 text-muted-foreground'
+                                                }`}>
+                                                <PackageCheck className="h-6 w-6" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                    <span className="font-bold text-lg tracking-tight truncate">{session.id}</span>
+                                                    <Badge className="font-bold text-[10px] uppercase tracking-wider" variant={getStatusColor(session.status)}>{getStatusText(session.status)}</Badge>
+                                                </div>
+
+                                                {/* Invoice & Supplier Info */}
+                                                <div className="text-xs md:text-sm text-muted-foreground flex items-center gap-x-3 gap-y-1 flex-wrap mb-2">
+                                                    <span className="flex items-center gap-1.5 min-w-0">
+                                                        <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                                                        <span className="truncate">{session.invoiceNumber || "Нет накладной"}</span>
+                                                    </span>
+                                                    <span className="flex items-center gap-1.5">
+                                                        <PackageCheck className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                                                        <span className="truncate">{session.supplier || "Поставщик не указан"}</span>
+                                                    </span>
+                                                </div>
+
+                                                {/* Warehouse & Timing */}
+                                                <div className="bg-muted/30 rounded-lg p-2.5 space-y-2 border border-border/50">
+                                                    <div className="flex items-center gap-2 text-sm font-bold text-foreground/90">
+                                                        <div className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                                                        <span className="uppercase text-[10px] tracking-widest opacity-60 font-bold mr-1 shrink-0">Склад:</span>
+                                                        <span className="truncate">{getWarehouseName(session.warehouseId)}</span>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-4 flex-wrap text-[11px] font-mono font-medium text-muted-foreground">
+                                                        <div className="flex items-center gap-1.5 bg-background/50 px-2 py-0.5 rounded border border-border/30">
+                                                            <Calendar className="h-3 w-3 opacity-60" />
+                                                            <span>Старт: {new Date(session.createdAt).toLocaleDateString()} {new Date(session.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                        </div>
+                                                        {(session.completedAt || session.status === 'completed') && (
+                                                            <div className="flex items-center gap-1.5 bg-green-500/5 text-green-600/80 px-2 py-0.5 rounded border border-green-500/10">
+                                                                <Check className="h-3 w-3 opacity-80" />
+                                                                <span>Финиш: {session.completedAt
+                                                                    ? new Date(session.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                                                    : "Завершено"}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Progress */}
+                                        <div className="flex items-center gap-4 lg:gap-6 min-w-full lg:min-w-[240px] pt-4 lg:pt-0 border-t lg:border-t-0 border-border/10">
+                                            <div className="flex-1">
+                                                <div className="flex justify-between items-end mb-1.5">
+                                                    <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground opacity-60">Прогресс</span>
+                                                    <div className="text-xl font-black font-mono">
+                                                        {scannedItems} <span className="text-muted-foreground text-xs font-normal">/ {totalItems}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="w-full bg-muted/50 h-2.5 rounded-full overflow-hidden p-0.5 border border-muted/10">
+                                                    <div
+                                                        className={`h-full rounded-full transition-all duration-700 shadow-sm ${session.status === 'completed' ? 'bg-green-500' : 'bg-primary'
+                                                            }`}
+                                                        style={{ width: `${(scannedItems / (totalItems || 1)) * 100}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+                                        </div>
+                                    </div>
+                                </CardContent>
+                                {
+                                    session.status === 'in_progress' && (
+                                        <div className="absolute top-0 left-0 w-1 h-full bg-primary/40" />
+                                    )
+                                }
+                            </Card>
+                        )
+                    })}
+
+                    {filteredSessions.length === 0 && (
+                        <Card className="border-dashed py-12 bg-muted/5">
+                            <CardContent className="flex flex-col items-center justify-center text-muted-foreground">
+                                <Search className="h-10 w-10 mb-4 opacity-20" />
+                                <h3 className="text-lg font-bold text-foreground/70">Ничего не найдено</h3>
+                                <p className="text-sm max-w-[240px] text-center mt-1">Попробуйте изменить параметры поиска или создать новую приемку</p>
+                            </CardContent>
+                        </Card>
+                    )}
+                </div>
+            </div>
+        </div >
+    );
+}

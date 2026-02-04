@@ -1,0 +1,61 @@
+{
+    "name": "winelab-api",
+    "version": "1.0.0",
+    "description": "WineLab Admin Backend API",
+    "author": "",
+    "private": true,
+    "license": "MIT",
+    "scripts": {
+        "build": "nest build",
+        "start": "nest start",
+        "start:dev": "nest start --watch",
+        "start:debug": "nest start --debug --watch",
+        "start:prod": "node dist/main",
+        "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+        "prisma:generate": "prisma generate",
+        "prisma:migrate": "prisma migrate dev",
+        "prisma:studio": "prisma studio",
+        "db:push": "prisma db push",
+        "db:seed": "ts-node prisma/seed.ts"
+    },
+    "dependencies": {
+        "@nestjs/common": "^10.4.0",
+        "@nestjs/config": "^3.2.0",
+        "@nestjs/core": "^10.4.0",
+        "@nestjs/jwt": "^10.2.0",
+        "@nestjs/passport": "^10.0.3",
+        "@nestjs/platform-express": "^10.4.0",
+        "@nestjs/swagger": "^7.4.0",
+        "@prisma/client": "^5.22.0",
+        "bcrypt": "^5.1.1",
+        "bcryptjs": "^2.4.3",
+        "class-transformer": "^0.5.1",
+        "class-validator": "^0.14.1",
+        "passport": "^0.7.0",
+        "passport-jwt": "^4.0.1",
+        "reflect-metadata": "^0.2.2",
+        "rxjs": "^7.8.1",
+        "socket.io": "^4.7.5",
+        "@nestjs/websockets": "^10.4.0",
+        "@nestjs/platform-socket.io": "^10.4.0",
+        "xlsx": "^0.18.5"
+    },
+    "devDependencies": {
+        "@nestjs/cli": "^10.4.0",
+        "@nestjs/schematics": "^10.1.0",
+        "@types/bcrypt": "^5.0.2",
+        "@types/bcryptjs": "^2.4.6",
+        "@types/express": "^4.17.21",
+        "@types/node": "^22.0.0",
+        "@types/passport-jwt": "^4.0.1",
+        "@typescript-eslint/eslint-plugin": "^8.0.0",
+        "@typescript-eslint/parser": "^8.0.0",
+        "eslint": "^9.0.0",
+        "prisma": "^5.22.0",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.5.0"
+    },
+    "prisma": {
+        "seed": "ts-node prisma/seed.ts"
+    }
+}

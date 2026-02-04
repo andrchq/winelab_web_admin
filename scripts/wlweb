@@ -1,0 +1,170 @@
+#!/bin/bash
+# WineLab Web Frontend Management - wlweb command
+# Usage: wlweb [start|stop|restart|rebuild|logs|status|update]
+
+PROJECT_DIR="/home/prsta/winelab_web_admin"
+SERVICE_NAME="winelab-web"
+
+# Colors
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+cd "$PROJECT_DIR" || { echo -e "${RED}❌ Directory not found: $PROJECT_DIR${NC}"; exit 1; }
+
+case "$1" in
+    start)
+        echo -e "${GREEN}▶ Starting WineLab Web...${NC}"
+        pm2 start npm --name "$SERVICE_NAME" -- run start 2>/dev/null || pm2 restart "$SERVICE_NAME"
+        echo -e "${GREEN}✅ Web started on http://localhost:8888${NC}"
+        ;;
+    
+    stop)
+        echo -e "${YELLOW}⏹ Stopping WineLab Web...${NC}"
+        pm2 stop "$SERVICE_NAME" 2>/dev/null
+        echo -e "${GREEN}✅ Web stopped${NC}"
+        ;;
+    
+    restart)
+        echo -e "${BLUE}🔄 Restarting WineLab Web...${NC}"
+        pm2 restart "$SERVICE_NAME"
+        echo -e "${GREEN}✅ Web restarted${NC}"
+        ;;
+    
+    rebuild)
+        echo -e "${YELLOW}🔨 Rebuilding WineLab Web...${NC}"
+        
+        # Stop service
+        echo -e "${BLUE}  → Stopping web service...${NC}"
+        pm2 delete "$SERVICE_NAME" 2>/dev/null
+        
+        # Check if clean rebuild needed
+        if [ "$2" == "--clean" ] || [ ! -d "node_modules" ]; then
+            echo -e "${BLUE}  → Cleaning old files...${NC}"
+            rm -rf node_modules .next
+            
+            echo -e "${BLUE}  → Installing dependencies...${NC}"
+            npm install
+        else
+            # Always clean .next for rebuild
+            echo -e "${BLUE}  → Cleaning previous build...${NC}"
+            rm -rf .next
+        fi
+        
+        # Build
+        echo -e "${BLUE}  → Building production...${NC}"
+        npm run build
+        
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}❌ Build failed! Check errors above.${NC}"
+            exit 1
+        fi
+        
+        # Start web
+        echo -e "${BLUE}  → Starting web server...${NC}"
+        pm2 start npm --name "$SERVICE_NAME" -- run start
+        
+        # Also restart API to ensure consistency
+        echo -e "${BLUE}  → Restarting API...${NC}"
+        pm2 restart winelab-api 2>/dev/null || echo -e "${YELLOW}⚠ API not running, skipped${NC}"
+        
+        pm2 save
+        
+        echo -e "${GREEN}✅ Web rebuilt and started on http://localhost:8888${NC}"
+        ;;
+    
+    update)
+        echo -e "${BLUE}🔄 Updating WineLab Web from GitHub...${NC}"
+        
+        # Save package.json hashes before pull
+        OLD_WEB_HASH=$(md5sum package.json 2>/dev/null | cut -d' ' -f1)
+        OLD_API_HASH=$(md5sum winelab_api/package.json 2>/dev/null | cut -d' ' -f1)
+        
+        echo -e "${BLUE}  → Pulling latest changes...${NC}"
+        git pull
+        
+        # Check if web package.json changed
+        NEW_WEB_HASH=$(md5sum package.json 2>/dev/null | cut -d' ' -f1)
+        if [ "$OLD_WEB_HASH" != "$NEW_WEB_HASH" ]; then
+            echo -e "${YELLOW}  → Web dependencies changed, installing...${NC}"
+            npm install
+        fi
+        
+        # Check if API package.json changed
+        NEW_API_HASH=$(md5sum winelab_api/package.json 2>/dev/null | cut -d' ' -f1)
+        if [ "$OLD_API_HASH" != "$NEW_API_HASH" ]; then
+            echo -e "${YELLOW}  → API dependencies changed, installing...${NC}"
+            cd winelab_api && npm install && cd ..
+        fi
+        
+        # Update API (generates Prisma, runs migrations)
+        echo -e "${BLUE}  → Updating API...${NC}"
+        cd winelab_api
+        npx prisma generate
+        npx prisma migrate deploy
+        cd ..
+        
+        # Rebuild web
+        echo -e "${BLUE}  → Rebuilding web...${NC}"
+        rm -rf .next
+        npm run build
+        
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}❌ Build failed!${NC}"
+            exit 1
+        fi
+        
+        # Restart services
+        echo -e "${BLUE}  → Restarting services...${NC}"
+        pm2 restart "$SERVICE_NAME"
+        pm2 restart winelab-api 2>/dev/null
+        
+        echo -e "${GREEN}✅ WineLab updated successfully!${NC}"
+        echo -e "${BLUE}   Web: http://YOUR_SERVER_IP:8888${NC}"
+        echo -e "${BLUE}   API: http://YOUR_SERVER_IP:3001${NC}"
+        ;;
+    
+    dev)
+        echo -e "${BLUE}🔧 Starting in development mode...${NC}"
+        pm2 stop "$SERVICE_NAME" 2>/dev/null
+        npm run dev
+        ;;
+    
+    logs)
+        pm2 logs "$SERVICE_NAME" --lines 100
+        ;;
+    
+    status)
+        echo -e "${BLUE}📊 WineLab Web Status${NC}"
+        echo ""
+        echo -e "${YELLOW}PM2:${NC}"
+        pm2 status "$SERVICE_NAME"
+        echo ""
+        echo -e "${YELLOW}Build:${NC}"
+        if [ -d ".next" ]; then
+            echo "  .next exists: $(du -sh .next | cut -f1)"
+        else
+            echo "  .next: NOT BUILT"
+        fi
+        ;;
+    
+    *)
+        echo -e "${BLUE}WineLab Web Management${NC}"
+        echo ""
+        echo "Usage: wlweb [command]"
+        echo ""
+        echo "Commands:"
+        echo "  start       Start web server (production)"
+        echo "  stop        Stop web server"
+        echo "  restart     Restart web server"
+        echo "  rebuild     Rebuild and restart (use --clean for full cleanup)"
+        echo "  update      Git pull, rebuild, and restart"
+        echo "  dev         Start in development mode"
+        echo "  logs        Show web logs"
+        echo "  status      Show service status"
+        echo ""
+        echo "Note: rebuild also restarts API for consistency"
+        ;;
+esac
