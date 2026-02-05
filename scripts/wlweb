@@ -83,6 +83,7 @@ case "$1" in
         OLD_API_HASH=$(md5sum winelab_api/package.json 2>/dev/null | cut -d' ' -f1)
         
         echo -e "${BLUE}  → Pulling latest changes...${NC}"
+        git reset --hard
         git pull
         
         # Check if web package.json changed
@@ -108,12 +109,19 @@ case "$1" in
             export $(grep -v '^#' .env | xargs)
         fi
         
+        # Fix permissions
+        echo -e "${BLUE}  → Setting permissions...${NC}"
         chmod +x node_modules/.bin/prisma 2>/dev/null || true
+        chmod +x node_modules/.bin/nest 2>/dev/null || true
+        
         npm run prisma:generate
         npm run prisma:deploy
         cd ..
         
         # Rebuild web
+        echo -e "${BLUE}  → Setting permissions for Next.js...${NC}"
+        chmod +x node_modules/.bin/next 2>/dev/null || true
+        
         echo -e "${BLUE}  → Rebuilding web...${NC}"
         rm -rf .next
         npm run build

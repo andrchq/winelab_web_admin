@@ -78,6 +78,7 @@ case "$1" in
         OLD_HASH=$(md5sum package.json 2>/dev/null | cut -d' ' -f1)
         
         echo -e "${BLUE}  → Pulling latest changes...${NC}"
+        git reset --hard
         git pull
         
         # Load environment variables for the current session if file exists
@@ -92,8 +93,10 @@ case "$1" in
             npm install
         fi
         
-        # Fix permissions for prisma binary
+        # Fix permissions for binaries
+        echo -e "${BLUE}  → Setting permissions...${NC}"
         chmod +x node_modules/.bin/prisma 2>/dev/null || true
+        chmod +x node_modules/.bin/nest 2>/dev/null || true
         
         # Generate Prisma client
         echo -e "${BLUE}  → Generating Prisma client...${NC}"
