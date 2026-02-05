@@ -98,13 +98,11 @@ case "$1" in
         chmod +x node_modules/.bin/prisma 2>/dev/null || true
         chmod +x node_modules/.bin/nest 2>/dev/null || true
         
-        # Generate Prisma client
         echo -e "${BLUE}  → Generating Prisma client...${NC}"
-        npm run prisma:generate
+        npx prisma generate
         
-        # Apply migrations
         echo -e "${BLUE}  → Applying database migrations...${NC}"
-        npm run prisma:deploy
+        npx prisma migrate deploy
         
         # Restart or Start service
         echo -e "${BLUE}  → Restarting API...${NC}"

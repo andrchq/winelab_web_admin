@@ -86,17 +86,17 @@ case "$1" in
         git reset --hard
         git pull
         
-        # Check if web package.json changed
+        # Check if web package.json changed or node_modules missing
         NEW_WEB_HASH=$(md5sum package.json 2>/dev/null | cut -d' ' -f1)
-        if [ "$OLD_WEB_HASH" != "$NEW_WEB_HASH" ]; then
-            echo -e "${YELLOW}  → Web dependencies changed, installing...${NC}"
+        if [ "$OLD_WEB_HASH" != "$NEW_WEB_HASH" ] || [ ! -d "node_modules" ]; then
+            echo -e "${YELLOW}  → Web dependencies changed or missing, installing...${NC}"
             npm install
         fi
         
-        # Check if API package.json changed
+        # Check if API package.json changed or node_modules missing
         NEW_API_HASH=$(md5sum winelab_api/package.json 2>/dev/null | cut -d' ' -f1)
-        if [ "$OLD_API_HASH" != "$NEW_API_HASH" ]; then
-            echo -e "${YELLOW}  → API dependencies changed, installing...${NC}"
+        if [ "$OLD_API_HASH" != "$NEW_API_HASH" ] || [ ! -d "winelab_api/node_modules" ]; then
+            echo -e "${YELLOW}  → API dependencies changed or missing, installing...${NC}"
             cd winelab_api && npm install && cd ..
         fi
         
@@ -114,8 +114,8 @@ case "$1" in
         chmod +x node_modules/.bin/prisma 2>/dev/null || true
         chmod +x node_modules/.bin/nest 2>/dev/null || true
         
-        npm run prisma:generate
-        npm run prisma:deploy
+        npx prisma generate
+        npx prisma migrate deploy
         cd ..
         
         # Rebuild web
