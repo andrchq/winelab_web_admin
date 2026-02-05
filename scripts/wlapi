@@ -86,10 +86,10 @@ case "$1" in
             export $(grep -v '^#' .env | xargs)
         fi
         
-        # Check if package.json changed
+        # Check if package.json changed or node_modules missing
         NEW_HASH=$(md5sum package.json 2>/dev/null | cut -d' ' -f1)
-        if [ "$OLD_HASH" != "$NEW_HASH" ]; then
-            echo -e "${YELLOW}  → package.json changed, installing dependencies...${NC}"
+        if [ "$OLD_HASH" != "$NEW_HASH" ] || [ ! -d "node_modules" ]; then
+            echo -e "${YELLOW}  → Dependencies changed or missing, installing...${NC}"
             npm install
         fi
         
