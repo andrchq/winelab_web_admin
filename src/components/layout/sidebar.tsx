@@ -53,11 +53,15 @@ export function Sidebar() {
     const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
-        setIsMounted(true);
-        const savedState = localStorage.getItem("sidebarCollapsed");
-        if (savedState !== null) {
-            setCollapsed(savedState === "true");
-        }
+        // Use setTimeout to avoid synchronous setState inside effect in React 19
+        const timer = setTimeout(() => {
+            setIsMounted(true);
+            const savedState = localStorage.getItem("sidebarCollapsed");
+            if (savedState !== null) {
+                setCollapsed(savedState === "true");
+            }
+        }, 0);
+        return () => clearTimeout(timer);
     }, []);
 
     const toggleCollapsed = () => {

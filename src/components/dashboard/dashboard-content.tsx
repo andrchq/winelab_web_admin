@@ -39,14 +39,15 @@ const statusMap: Record<string, { label: string; variant: "default" | "success" 
 export function DashboardContent() {
     const { data: stats, isLoading, error } = useDashboardStats();
 
+    const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
     // Generate mock trend data based on current stats
-    const trendData = useMemo(() => {
-        const baseAssets = stats?.totals?.assets || 100;
-        const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    const chartData = useMemo(() => {
+        if (!stats) return [];
+        const baseAssets = stats.totals.assets || 100;
         return days.map((name, i) => ({
             name,
-            value: Math.round(baseAssets * (0.85 + Math.random() * 0.3)),
-            value2: Math.round((stats?.totals?.deliveries || 10) * (0.7 + Math.random() * 0.6))
+            value: Math.round(baseAssets * (0.85 + (i * 0.05))), // Fixed values based on index
+            value2: Math.round((stats?.totals?.deliveries || 10) * (0.7 + (i * 0.1)))
         }));
     }, [stats]);
 
@@ -216,7 +217,7 @@ export function DashboardContent() {
                         </CardHeader>
                         <CardContent>
                             <CustomAreaChart
-                                data={trendData}
+                                data={chartData}
                                 color="#10b981"
                                 color2="#8b5cf6"
                                 height={250}

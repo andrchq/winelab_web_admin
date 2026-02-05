@@ -26,10 +26,14 @@ export function TSDModeProvider({ children }: { children: React.ReactNode }) {
     // Initial sync with localStorage - runs once on mount
     useEffect(() => {
         const stored = localStorage.getItem('winelab_tsd_mode');
-        if (stored === 'true') {
-            setIsTSDMode(true);
-        }
-        setIsInitialized(true);
+        // Use setTimeout to avoid synchronous setState inside effect in React 19
+        const timer = setTimeout(() => {
+            if (stored === 'true') {
+                setIsTSDMode(true);
+            }
+            setIsInitialized(true);
+        }, 0);
+        return () => clearTimeout(timer);
     }, []);
 
     // Logic for showing prompt - only runs after initialization
