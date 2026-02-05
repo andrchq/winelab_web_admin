@@ -10,31 +10,26 @@ const SOCKET_URL = API_URL.replace('/api', '');
 
 const isBrowser = typeof window !== 'undefined';
 
-// Initialize socket only in browser context
-export const socket: Socket = isBrowser ? io(SOCKET_URL, {
-    transports: ["websocket", "polling"],
-    autoConnect: false, // Explicitly false, we connect in AuthProvider
-    reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
-}) : ({
-    on: () => { },
-    off: () => { },
-    emit: () => { },
-    connect: () => { },
-    disconnect: () => { }
-} as any);
+// Initialize socket only in browser context to avoid build errors
+export const socket: Socket = isBrowser
+    ? io(SOCKET_URL, {
+        transports: ["websocket", "polling"],
+        autoConnect: false, // Explicitly false, we connect in AuthProvider
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+    })
+    : ({
+        on: () => { },
+        off: () => { },
+        emit: () => { },
+        connect: () => { },
+        disconnect: () => { },
+        connected: false
+    } as any);
 
 if (isBrowser) {
-    socket.on("connect", () => {
-        console.log("Socket connected:", socket.id);
-    });
-
-    socket.on("disconnect", () => {
-        console.log("Socket disconnected");
-    });
-
-    socket.on("connect_error", (err) => {
-        console.error("Socket connection error:", err);
-    });
+    socket.on("connect", () => console.log("Socket connected:", socket.id));
+    socket.on("disconnect", () => console.log("Socket disconnected"));
+    socket.on("connect_error", (err) => console.error("Socket error:", err));
 }
