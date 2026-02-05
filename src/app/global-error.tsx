@@ -8,35 +8,15 @@ export default function GlobalError({
     reset: () => void
 }) {
     return (
-        <html lang="ru">
-            <body>
-                <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minHeight: '100vh',
-                    padding: '20px',
-                    textAlign: 'center',
-                    backgroundColor: '#0a0a0a',
-                    color: '#ffffff'
-                }}>
-                    <h2 style={{ fontSize: '24px', marginBottom: '16px' }}>Что-то пошло не так</h2>
-                    <button
-                        onClick={() => reset()}
-                        style={{
-                            padding: '12px 24px',
-                            backgroundColor: '#8b5cf6',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '8px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        Попробовать снова
-                    </button>
-                </div>
-            </body>
-        </html>
+        <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center bg-background text-foreground">
+            <h2 className="text-2xl font-bold mb-4 text-destructive">Критическая ошибка</h2>
+            <p className="text-muted-foreground mb-6">{error.message || 'Произошла непредвиденная ошибка'}</p>
+            <button
+                onClick={() => reset()}
+                className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition"
+            >
+                Попробовать снова
+            </button>
+        </div>
     )
 }
