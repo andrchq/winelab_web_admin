@@ -299,3 +299,44 @@ export interface StoreEquipment {
     createdAt: string;
     createdBy?: string;
 }
+
+// Receiving Types
+export type ReceivingStatus = 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED';
+
+export interface ReceivingItem {
+    id: string;
+    sessionId: string;
+    name: string;
+    sku?: string;
+    expectedQuantity: number;
+    scannedQuantity: number;
+    productId?: string;
+    createdAt: string;
+    updatedAt: string;
+    product?: {
+        id: string;
+        name: string;
+        sku: string;
+    };
+}
+
+export interface ReceivingSession {
+    id: string;
+    warehouseId: string;
+    status: ReceivingStatus;
+    invoiceNumber?: string;
+    supplier?: string;
+    createdById: string;
+    createdAt: string;
+    updatedAt: string;
+    completedAt?: string;
+    warehouse?: {
+        id: string;
+        name: string;
+    };
+    createdBy?: {
+        id: string;
+        name: string;
+    };
+    items: ReceivingItem[];
+}

@@ -238,3 +238,44 @@ export function useWarehouses() {
 export function useWarehouse(id: string) {
     return useData<WarehouseDetails>(`/warehouses/${id}`);
 }
+
+// Receiving Sessions
+import type { ReceivingSession } from '@/types/api';
+
+export function useReceivingSessions() {
+    const result = useList<ReceivingSession>('/receiving');
+
+    useEffect(() => {
+        const handleUpdate = () => {
+            if (result.refetch) result.refetch();
+        };
+
+        socket.on('receiving_update', handleUpdate);
+        socket.on('receiving_delete', handleUpdate);
+        return () => {
+            socket.off('receiving_update', handleUpdate);
+            socket.off('receiving_delete', handleUpdate);
+        };
+    }, [result.refetch]);
+
+    return result;
+}
+
+export function useReceivingSession(id: string) {
+    const result = useData<ReceivingSession>(`/receiving/${id}`);
+
+    useEffect(() => {
+        const handleUpdate = (updatedSession: ReceivingSession) => {
+            if (updatedSession.id === id) {
+                if (result.refetch) result.refetch();
+            }
+        };
+
+        socket.on('receiving_update', handleUpdate);
+        return () => {
+            socket.off('receiving_update', handleUpdate);
+        };
+    }, [id, result.refetch]);
+
+    return result;
+}

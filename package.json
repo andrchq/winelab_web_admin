@@ -6,7 +6,9 @@
     "dev": "next dev -p 8888",
     "build": "next build",
     "start": "next start -p 8888",
-    "lint": "eslint"
+    "lint": "eslint",
+    "api": "cd winelab_api && npm run start:dev",
+    "start:all": "start-dev.bat"
   },
   "dependencies": {
     "@pbe/react-yandex-maps": "^1.2.5",

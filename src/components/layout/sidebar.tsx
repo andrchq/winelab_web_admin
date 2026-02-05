@@ -46,7 +46,7 @@ const bottomNavigation = [
 
 export function Sidebar() {
     const pathname = usePathname();
-    const { logout } = useAuth();
+    const { logout, hasRole } = useAuth();
 
     // Initialize state from localStorage if available, otherwise default to false
     const [collapsed, setCollapsed] = useState(false);
@@ -92,7 +92,7 @@ export function Sidebar() {
         {
             title: "Склад",
             items: [
-                { name: "Приемка", href: "/receiving", icon: ArrowDownToLine },
+                { name: "Приемка", href: "/receiving", icon: ArrowDownToLine, roles: ['ADMIN', 'MANAGER', 'WAREHOUSE'] as const },
                 { name: "Каталог", href: "/catalog", icon: Package },
                 { name: "Склады", href: "/warehouses", icon: Building2 },
                 { name: "Серийники", href: "/assets", icon: Boxes },
@@ -178,30 +178,32 @@ export function Sidebar() {
                         {/* Always show "Основное" items, or if group is open */}
                         {(group.title === "Основное" || openGroups[group.title] || collapsed) && (
                             <ul className="space-y-1">
-                                {group.items.map((item) => {
-                                    const isActive = pathname === item.href ||
-                                        (item.href !== "/" && pathname.startsWith(item.href));
+                                {group.items
+                                    .filter((item) => !item.roles || hasRole(item.roles as any))
+                                    .map((item) => {
+                                        const isActive = pathname === item.href ||
+                                            (item.href !== "/" && pathname.startsWith(item.href));
 
-                                    return (
-                                        <li key={item.name}>
-                                            <Link
-                                                href={item.href}
-                                                className={cn(
-                                                    "sidebar-item",
-                                                    isActive && "sidebar-item-active",
-                                                    collapsed && "justify-center px-2"
-                                                )}
-                                                title={collapsed ? item.name : undefined}
-                                            >
-                                                <item.icon className={cn(
-                                                    "h-5 w-5 shrink-0 transition-colors",
-                                                    isActive ? "text-primary" : "text-muted-foreground"
-                                                )} />
-                                                {!collapsed && <span>{item.name}</span>}
-                                            </Link>
-                                        </li>
-                                    );
-                                })}
+                                        return (
+                                            <li key={item.name}>
+                                                <Link
+                                                    href={item.href}
+                                                    className={cn(
+                                                        "sidebar-item",
+                                                        isActive && "sidebar-item-active",
+                                                        collapsed && "justify-center px-2"
+                                                    )}
+                                                    title={collapsed ? item.name : undefined}
+                                                >
+                                                    <item.icon className={cn(
+                                                        "h-5 w-5 shrink-0 transition-colors",
+                                                        isActive ? "text-primary" : "text-muted-foreground"
+                                                    )} />
+                                                    {!collapsed && <span>{item.name}</span>}
+                                                </Link>
+                                            </li>
+                                        );
+                                    })}
                             </ul>
                         )}
                     </div>

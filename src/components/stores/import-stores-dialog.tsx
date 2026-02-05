@@ -21,12 +21,20 @@ interface ImportStoresDialogProps {
     onSuccess?: () => void;
 }
 
+interface ColumnInfo {
+    name: string;
+    filledCount: number;
+    totalRows: number;
+    percentage: number;
+}
+
 interface FilePreview {
     totalRows: number;
     validRows: number;
     missingFields: number;
     duplicates: number;
     columns: string[];
+    columnStats: ColumnInfo[];
     sampleData: any[];
     issues: string[];
 }
@@ -109,6 +117,10 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
                     const sapValues = new Set<string>();
                     let duplicates = 0;
 
+                    // Track column fill statistics
+                    const columnFillCounts: Record<string, number> = {};
+                    columns.forEach(col => columnFillCounts[col] = 0);
+
                     for (const row of jsonData) {
                         const sap = row['SAP'] || row['sap'] || row['Sap'];
                         const address = row['Address'] || row['address'] || row['Адрес'];
@@ -123,7 +135,23 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
                         } else {
                             missingFields++;
                         }
+
+                        // Count filled values for each column
+                        for (const col of columns) {
+                            const value = row[col];
+                            if (value !== null && value !== undefined && String(value).trim() !== '') {
+                                columnFillCounts[col]++;
+                            }
+                        }
                     }
+
+                    // Calculate column statistics
+                    const columnStats: ColumnInfo[] = columns.map(col => ({
+                        name: col,
+                        filledCount: columnFillCounts[col],
+                        totalRows: jsonData.length,
+                        percentage: jsonData.length > 0 ? (columnFillCounts[col] / jsonData.length) * 100 : 0
+                    }));
 
                     if (missingFields > 0) {
                         issues.push(`${missingFields} строк без обязательных полей (SAP или Address)`);
@@ -146,6 +174,7 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
                         missingFields,
                         duplicates,
                         columns,
+                        columnStats,
                         sampleData: jsonData.slice(0, 3),
                         issues
                     });
@@ -274,17 +303,34 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
                                         Найденные колонки ({preview.columns.length})
                                     </div>
                                     <div className="flex flex-wrap gap-1">
-                                        {preview.columns.slice(0, 15).map((col, i) => (
-                                            <span key={i} className={`text-xs px-2 py-1 rounded ${REQUIRED_COLUMNS.some(r => col.toLowerCase().includes(r.toLowerCase()))
-                                                    ? 'bg-emerald-500/20 text-emerald-700'
-                                                    : 'bg-muted text-muted-foreground'
-                                                }`}>
-                                                {col}
-                                            </span>
-                                        ))}
-                                        {preview.columns.length > 15 && (
+                                        {preview.columnStats.slice(0, 15).map((colStat, i) => {
+                                            // Determine color based on fill percentage
+                                            // Green: 100% filled, Yellow: >=20% filled, Red: <20% filled
+                                            let colorClass = '';
+                                            if (colStat.percentage >= 100) {
+                                                colorClass = 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400';
+                                            } else if (colStat.percentage >= 20) {
+                                                colorClass = 'bg-amber-500/20 text-amber-700 dark:text-amber-400';
+                                            } else {
+                                                colorClass = 'bg-red-500/20 text-red-700 dark:text-red-400';
+                                            }
+
+                                            return (
+                                                <span
+                                                    key={i}
+                                                    className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1 ${colorClass}`}
+                                                    title={`Заполнено: ${colStat.filledCount} из ${colStat.totalRows} (${colStat.percentage.toFixed(0)}%)`}
+                                                >
+                                                    {colStat.name}
+                                                    <span className="opacity-70 text-[10px]">
+                                                        {colStat.filledCount}/{colStat.totalRows}
+                                                    </span>
+                                                </span>
+                                            );
+                                        })}
+                                        {preview.columnStats.length > 15 && (
                                             <span className="text-xs px-2 py-1 text-muted-foreground">
-                                                +{preview.columns.length - 15} колонок
+                                                +{preview.columnStats.length - 15} колонок
                                             </span>
                                         )}
                                     </div>

@@ -93,6 +93,7 @@ model User {
   comments         Comment[]
   auditLogs        AuditLog[]
   createdStores    Store[]      @relation("StoreCreator")
+  receivingSessions ReceivingSession[] @relation("ReceivingCreator")
 
   @@map("users")
 }
@@ -109,8 +110,9 @@ model Product {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  assets     Asset[]
-  stockItems StockItem[]
+  assets        Asset[]
+  stockItems    StockItem[]
+  receivingItems ReceivingItem[]
 
   @@map("products")
 }
@@ -163,6 +165,49 @@ model StockItem {
   @@map("stock_items")
 }
 
+enum ReceivingStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+}
+
+model ReceivingSession {
+  id            String          @id @default(uuid())
+  warehouseId   String
+  status        ReceivingStatus @default(DRAFT)
+  invoiceNumber String?
+  supplier      String?
+  createdById   String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  completedAt   DateTime?
+
+  // Relations
+  warehouse Warehouse         @relation(fields: [warehouseId], references: [id])
+  createdBy User              @relation("ReceivingCreator", fields: [createdById], references: [id])
+  items     ReceivingItem[]
+
+  @@map("receiving_sessions")
+}
+
+model ReceivingItem {
+  id               String   @id @default(uuid())
+  sessionId        String
+  name             String
+  sku              String?
+  expectedQuantity Int      @default(0)
+  scannedQuantity  Int      @default(0)
+  productId        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  session ReceivingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  product Product?         @relation(fields: [productId], references: [id])
+
+  @@map("receiving_items")
+}
+
 model Warehouse {
   id        String   @id @default(uuid())
   name      String
@@ -171,10 +216,11 @@ model Warehouse {
   createdAt DateTime @default(now())
 
   // Relations
-  bins       WarehouseBin[]
-  assets     Asset[]
-  stockItems StockItem[]
-  shipments  Shipment[]
+  bins              WarehouseBin[]
+  assets            Asset[]
+  stockItems        StockItem[]
+  shipments         Shipment[]
+  receivingSessions ReceivingSession[]
 
   @@map("warehouses")
 }
