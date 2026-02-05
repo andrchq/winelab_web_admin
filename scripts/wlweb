@@ -119,9 +119,11 @@ case "$1" in
         echo -e "${BLUE}  → Setting permissions for Next.js...${NC}"
         chmod +x node_modules/.bin/next 2>/dev/null || true
         
-        echo -e "${BLUE}  → Rebuilding web...${NC}"
-        # If build failed before, let's try a cleaner install
+        echo -e "${BLUE}  → Cleaning build cache...${NC}"
         rm -rf .next
+        rm -rf node_modules/.cache
+        
+        echo -e "${BLUE}  → Rebuilding web...${NC}"
         npm run build
         
         if [ $? -ne 0 ]; then
