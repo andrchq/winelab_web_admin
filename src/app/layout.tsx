@@ -1,11 +1,6 @@
 import type { Metadata } from "next";
-import dynamicImport from "next/dynamic";
 import "./globals.css";
-
-// Dynamic import with SSR disabled - prevents useState errors during static generation
-const Providers = dynamicImport(() => import("./providers").then(mod => mod.Providers), {
-  ssr: false,
-});
+import { ClientWrapper } from "./client-wrapper";
 
 // Force all pages to be rendered at request time, not build time
 export const dynamic = 'force-dynamic';
@@ -24,7 +19,7 @@ export default function RootLayout({
   return (
     <html lang="ru" className="dark" suppressHydrationWarning>
       <body className="antialiased" suppressHydrationWarning>
-        <Providers>{children}</Providers>
+        <ClientWrapper>{children}</ClientWrapper>
       </body>
     </html>
   );
