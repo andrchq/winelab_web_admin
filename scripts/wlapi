@@ -95,14 +95,13 @@ case "$1" in
         
         # Fix permissions for binaries
         echo -e "${BLUE}  → Setting permissions...${NC}"
-        chmod +x node_modules/.bin/prisma 2>/dev/null || true
-        chmod +x node_modules/.bin/nest 2>/dev/null || true
+        chmod +x install.sh 2>/dev/null || true
         
         echo -e "${BLUE}  → Generating Prisma client...${NC}"
-        npx prisma generate
+        npx prisma@5.22.0 generate
         
         echo -e "${BLUE}  → Applying database migrations...${NC}"
-        npx prisma migrate deploy
+        npx prisma@5.22.0 migrate deploy
         
         # Restart or Start service
         echo -e "${BLUE}  → Restarting API...${NC}"

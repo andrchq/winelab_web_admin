@@ -38,9 +38,11 @@
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
-    "eslint-config-next": "16.1.5",
+    "eslint-config-next": "15.1.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "@prisma/client": "5.22.0",
+    "prisma": "5.22.0"
   },
   "overrides": {
     "react": "$react",
