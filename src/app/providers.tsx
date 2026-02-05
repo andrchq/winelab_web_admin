@@ -1,23 +1,13 @@
 'use client';
 
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { TSDModeProvider } from '@/contexts/TSDModeContext';
 import { Toaster } from '@/components/ui/sonner';
 
 export function Providers({ children }: { children: ReactNode }) {
-    const [mounted, setMounted] = useState(false);
-
-    useEffect(() => {
-        setMounted(true);
-    }, []);
-
-    // During SSR/static generation, render children without providers
-    // This prevents useState errors during prerendering
-    if (!mounted) {
-        return <>{children}</>;
-    }
-
+    // Since this component is dynamically imported with ssr: false,
+    // it will only render on the client side, so we can safely use hooks
     return (
         <AuthProvider>
             <TSDModeProvider>

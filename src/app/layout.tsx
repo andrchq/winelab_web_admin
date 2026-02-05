@@ -1,6 +1,14 @@
 import type { Metadata } from "next";
+import dynamicImport from "next/dynamic";
 import "./globals.css";
-import { Providers } from "./providers";
+
+// Dynamic import with SSR disabled - prevents useState errors during static generation
+const Providers = dynamicImport(() => import("./providers").then(mod => mod.Providers), {
+  ssr: false,
+});
+
+// Force all pages to be rendered at request time, not build time
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: "WineLab Admin - Управление складом и логистикой",
@@ -21,4 +29,3 @@ export default function RootLayout({
     </html>
   );
 }
-
