@@ -39,10 +39,6 @@ yarn-error.log*
 .env.production.local
 *.env
 
-# prisma
-winelab_api/prisma/migrations/
-!winelab_api/prisma/migrations/**
-
 # vercel
 .vercel
 

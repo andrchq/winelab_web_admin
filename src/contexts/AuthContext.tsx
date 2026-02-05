@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import type { User } from '@/types/api';
 import { initializeAuth, getAuthToken } from '@/lib/api';
 import { login as authLogin, logout as authLogout, getStoredUser, getCurrentUser, LoginCredentials } from '@/lib/auth';
+import { socket } from '@/lib/socket';
 
 interface AuthContextType {
     user: User | null;
@@ -19,6 +20,15 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+
+    // Socket connection management
+    useEffect(() => {
+        if (user) {
+            socket.connect();
+        } else {
+            socket.disconnect();
+        }
+    }, [user]);
 
     useEffect(() => {
         const init = async () => {
@@ -47,6 +57,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
 
         init();
+
+        return () => {
+            socket.disconnect();
+        };
     }, []);
 
     const login = async (credentials: LoginCredentials) => {
