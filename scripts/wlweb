@@ -102,8 +102,9 @@ case "$1" in
         # Update API (generates Prisma, runs migrations)
         echo -e "${BLUE}  → Updating API...${NC}"
         cd winelab_api
-        npx prisma generate
-        npx prisma migrate deploy
+        chmod +x node_modules/.bin/prisma 2>/dev/null || true
+        npm run prisma:generate
+        npm run prisma:deploy
         cd ..
         
         # Rebuild web
@@ -116,10 +117,10 @@ case "$1" in
             exit 1
         fi
         
-        # Restart services
-        echo -e "${BLUE}  → Restarting services...${NC}"
-        pm2 restart "$SERVICE_NAME"
-        pm2 restart winelab-api 2>/dev/null
+        # Restart services (Start if not existing)
+        echo -e "${BLUE}  → Starting/Restarting services...${NC}"
+        pm2 restart "$SERVICE_NAME" 2>/dev/null || pm2 start npm --name "$SERVICE_NAME" -- run start
+        pm2 restart winelab-api 2>/dev/null || pm2 start npm --name "winelab-api" --cwd "$(pwd)/winelab_api" -- run start:dev
         
         echo -e "${GREEN}✅ WineLab updated successfully!${NC}"
         echo -e "${BLUE}   Web: http://YOUR_SERVER_IP:8888${NC}"

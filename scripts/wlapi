@@ -87,17 +87,20 @@ case "$1" in
             npm install
         fi
         
-        # Generate Prisma client (always, in case schema changed)
+        # Fix permissions for prisma binary
+        chmod +x node_modules/.bin/prisma 2>/dev/null || true
+        
+        # Generate Prisma client
         echo -e "${BLUE}  → Generating Prisma client...${NC}"
-        npx prisma generate
+        npm run prisma:generate
         
         # Apply migrations
         echo -e "${BLUE}  → Applying database migrations...${NC}"
-        npx prisma migrate deploy
+        npm run prisma:deploy
         
-        # Restart service
+        # Restart or Start service
         echo -e "${BLUE}  → Restarting API...${NC}"
-        pm2 restart "$SERVICE_NAME"
+        pm2 restart "$SERVICE_NAME" 2>/dev/null || pm2 start npm --name "$SERVICE_NAME" -- run start:dev
         
         echo -e "${GREEN}✅ API updated successfully${NC}"
         ;;
