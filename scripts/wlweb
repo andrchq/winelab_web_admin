@@ -123,11 +123,19 @@ case "$1" in
         chmod +x node_modules/.bin/next 2>/dev/null || true
         
         echo -e "${BLUE}  → Rebuilding web...${NC}"
+        # If build failed before, let's try a cleaner install
         rm -rf .next
         npm run build
         
         if [ $? -ne 0 ]; then
-            echo -e "${RED}❌ Build failed!${NC}"
+            echo -e "${YELLOW}  → Build failed, trying with clean node_modules...${NC}"
+            rm -rf node_modules package-lock.json
+            npm install
+            npm run build
+        fi
+        
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}❌ Build failed again! Check errors above.${NC}"
             exit 1
         fi
         
