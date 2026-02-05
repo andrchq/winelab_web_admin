@@ -26,8 +26,10 @@
         "@nestjs/jwt": "^10.2.0",
         "@nestjs/passport": "^10.0.3",
         "@nestjs/platform-express": "^10.4.0",
+        "@nestjs/platform-socket.io": "^10.4.0",
         "@nestjs/swagger": "^7.4.0",
-        "@prisma/client": "^5.22.0",
+        "@nestjs/websockets": "^10.4.0",
+        "@prisma/client": "^7.3.0",
         "bcrypt": "^5.1.1",
         "bcryptjs": "^2.4.3",
         "class-transformer": "^0.5.1",
@@ -37,8 +39,6 @@
         "reflect-metadata": "^0.2.2",
         "rxjs": "^7.8.1",
         "socket.io": "^4.7.5",
-        "@nestjs/websockets": "^10.4.0",
-        "@nestjs/platform-socket.io": "^10.4.0",
         "xlsx": "^0.18.5"
     },
     "devDependencies": {
@@ -52,7 +52,7 @@
         "@typescript-eslint/eslint-plugin": "^8.0.0",
         "@typescript-eslint/parser": "^8.0.0",
         "eslint": "^9.0.0",
-        "prisma": "^5.22.0",
+        "prisma": "^7.3.0",
         "ts-node": "^10.9.2",
         "typescript": "^5.5.0"
     },

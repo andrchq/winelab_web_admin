@@ -80,6 +80,11 @@ case "$1" in
         echo -e "${BLUE}  → Pulling latest changes...${NC}"
         git pull
         
+        # Load environment variables for the current session if file exists
+        if [ -f ".env" ]; then
+            export $(grep -v '^#' .env | xargs)
+        fi
+        
         # Check if package.json changed
         NEW_HASH=$(md5sum package.json 2>/dev/null | cut -d' ' -f1)
         if [ "$OLD_HASH" != "$NEW_HASH" ]; then

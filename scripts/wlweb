@@ -102,6 +102,12 @@ case "$1" in
         # Update API (generates Prisma, runs migrations)
         echo -e "${BLUE}  → Updating API...${NC}"
         cd winelab_api
+        
+        # Export for prisma if file exists
+        if [ -f ".env" ]; then
+            export $(grep -v '^#' .env | xargs)
+        fi
+        
         chmod +x node_modules/.bin/prisma 2>/dev/null || true
         npm run prisma:generate
         npm run prisma:deploy
