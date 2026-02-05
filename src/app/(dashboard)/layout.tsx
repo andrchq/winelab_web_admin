@@ -2,8 +2,6 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
-// Force dynamic rendering - prevents static generation errors with React hooks
-export const dynamic = 'force-dynamic';
 export default function DashboardLayout({
     children,
 }: {
