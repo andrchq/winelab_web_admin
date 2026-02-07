@@ -126,41 +126,50 @@ export function Sidebar() {
         >
             {/* Logo Section */}
             <div className={cn(
-                "flex h-24 items-center border-b border-border/40",
+                "flex h-24 items-center gap-3 border-b border-border/40",
                 collapsed ? "justify-center px-2" : "justify-between px-4"
             )}>
+                <Link href="/" className="flex items-center gap-3 group">
+                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-purple-600 shadow-lg shadow-purple-500/25 transition-transform group-hover:scale-105">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="h-6 w-6 text-white"
+                        >
+                            <path d="M4 4l6 16 2.5-7 2.5 7 6-16" />
+                        </svg>
+                    </div>
+                    {!collapsed && (
+                        <span className="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-violet-600 to-purple-600 whitespace-nowrap">
+                            WineLab
+                        </span>
+                    )}
+                </Link>
+
                 {!collapsed && (
-                    <Link href="/" className="flex items-center gap-3 group">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-purple-600 shadow-lg shadow-purple-500/25 transition-transform group-hover:scale-105">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="3"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="h-6 w-6 text-white"
-                            >
-                                <path d="M4 4l6 16 2.5-7 2.5 7 6-16" />
-                            </svg>
-                        </div>
-                        <span className="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-violet-600 to-purple-600">WineLab</span>
-                    </Link>
+                    <button
+                        onClick={toggleCollapsed}
+                        className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground transition-colors"
+                    >
+                        <ChevronLeft className="h-5 w-5" />
+                    </button>
                 )}
-                <button
-                    onClick={toggleCollapsed}
-                    className={cn(
-                        "flex h-12 w-12 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 border border-border/50",
-                        collapsed && "mx-auto"
-                    )}
-                >
-                    {collapsed ? (
+                {collapsed && (
+                    <button
+                        onClick={toggleCollapsed}
+                        className={cn(
+                            "flex h-12 w-12 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 border border-border/50",
+                            collapsed && "mx-auto"
+                        )}
+                    >
                         <Menu className="h-6 w-6" />
-                    ) : (
-                        <ChevronLeft className="h-6 w-6" />
-                    )}
-                </button>
+                    </button>
+                )}
             </div>
 
             {/* Navigation */}
