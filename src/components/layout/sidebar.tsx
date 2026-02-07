@@ -1,136 +1,81 @@
-"use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
+'use client';
+
+import React from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { cn } from '@/lib/utils';
 import {
     LayoutDashboard,
     Package,
-    Boxes,
-    Warehouse,
     ClipboardList,
     Truck,
-    MapPin,
     Store,
     Users,
     Settings,
-    BarChart3,
     Bell,
     ChevronLeft,
     Menu,
-    LogOut,
-    ArrowDownToLine,
-    Building2,
-} from "lucide-react";
-import { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import { useTSDMode } from "@/contexts/TSDModeContext";
-import { useDeliveries } from "@/lib/hooks";
+    Warehouse,
+    BarChart3,
+    FileText,
+    History
+} from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
-export function Sidebar() {
+interface SidebarProps {
+    collapsed: boolean;
+    setCollapsed: (collapsed: boolean) => void;
+}
+
+const navGroups = [
+    {
+        name: 'Основное',
+        items: [
+            { name: 'Дашборд', href: '/', icon: LayoutDashboard },
+            { name: 'Склад', href: '/stock', icon: Package },
+            { name: 'Приемка', href: '/receiving', icon: ClipboardList, badge: 3 },
+            { name: 'Отгрузка', href: '/shipments', icon: Truck },
+        ]
+    },
+    {
+        name: 'Управление',
+        items: [
+            { name: 'Магазины', href: '/stores', icon: Store },
+            { name: 'Каталог', href: '/catalog', icon: FileText },
+            { name: 'Заявки', href: '/requests', icon: Bell, badge: 5 },
+        ]
+    },
+    {
+        name: 'Администрирование',
+        items: [
+            { name: 'Пользователи', href: '/users', icon: Users, roles: ['ADMIN'] as const },
+            { name: 'Аналитика', href: '/analytics', icon: BarChart3, roles: ['ADMIN', 'MANAGER'] as const },
+            { name: 'Настройки', href: '/settings', icon: Settings },
+        ]
+    }
+];
+
+export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
     const pathname = usePathname();
-    const { logout, hasRole } = useAuth();
-    const { data: deliveries } = useDeliveries();
+    const { user } = useAuth();
 
-    // Calculate active/unprocessed deliveries count
-    // Assuming 'CREATED' is considered "open" or "new" tasks for logistics
-    // Adjust status filter as needed based on specific business logic for "unprocessed"
-    const activeDeliveriesCount = deliveries?.filter(d => ['CREATED'].includes(d.status)).length || 0;
-
-    // Initialize state from localStorage if available, otherwise default to false
-    const [collapsed, setCollapsed] = useState(false);
-    const [isMounted, setIsMounted] = useState(false);
-
-    useEffect(() => {
-        // Use setTimeout to avoid synchronous setState inside effect in React 19
-        const timer = setTimeout(() => {
-            setIsMounted(true);
-            const savedState = localStorage.getItem("sidebarCollapsed");
-            if (savedState !== null) {
-                setCollapsed(savedState === "true");
-            }
-        }, 0);
-        return () => clearTimeout(timer);
-    }, []);
-
-    const toggleCollapsed = () => {
-        const newState = !collapsed;
-        setCollapsed(newState);
-        localStorage.setItem("sidebarCollapsed", String(newState));
-    };
-
-    // Default open states for groups
-    const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-        "Склад": true,
-        "Логистика": true,
-        "Система": true
-    });
-
-    const toggleGroup = (groupName: string) => {
-        setOpenGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }));
-    };
-
-    const navGroups = [
-        {
-            title: "Основное", // Implicit group, no header needed if logical
-            items: [
-                { name: "Главная", href: "/", icon: LayoutDashboard },
-                { name: "Магазины", href: "/stores", icon: Store },
-            ]
-        },
-        {
-            title: "Склад",
-            items: [
-                { name: "Перемещения", href: "/receiving", icon: ArrowDownToLine, roles: ['ADMIN', 'MANAGER', 'WAREHOUSE'] as const },
-                // Catalog integrated into Inventory (Serial Numbers)
-                { name: "Склады", href: "/warehouses", icon: Building2 },
-                { name: "Инвентаризация", href: "/assets", icon: Boxes }, // Was "Серийники"
-                { name: "Остатки", href: "/stock", icon: Warehouse },     // Was "Расходники"
-            ]
-        },
-        {
-            title: "Логистика",
-            items: [
-                {
-                    name: "Заявки",
-                    href: "/requests",
-                    icon: ClipboardList,
-                    badge: activeDeliveriesCount > 0 ? activeDeliveriesCount : undefined
-                },
-                // Deliveries integrated into Requests
-                { name: "Отгрузка", href: "/shipments", icon: Truck },  // Was "Отгрузки"
-            ]
-        },
-        {
-            title: "Система",
-            items: [
-                { name: "Аналитика", href: "/analytics", icon: BarChart3 },
-                { name: "Пользователи", href: "/users", icon: Users },
-                { name: "Настройки", href: "/settings", icon: Settings },
-            ]
-        }
-    ];
-
-    const { isTSDMode } = useTSDMode();
-
-    if (isTSDMode) return null;
+    const toggleCollapsed = () => setCollapsed(!collapsed);
 
     return (
         <aside
             className={cn(
-                "flex h-screen flex-col bg-card border-r border-border/40 transition-all duration-300 ease-in-out",
-                collapsed ? "w-[72px]" : "w-64",
-                // Prevent transition on initial mount to avoid animation
-                !isMounted && "transition-none"
+                "fixed left-0 top-0 z-40 h-screen transition-all duration-300 ease-in-out border-r border-border/40 bg-card/50 backdrop-blur-xl",
+                collapsed ? "w-20" : "w-72"
             )}
         >
             {/* Logo Section */}
             <div className={cn(
-                "flex h-20 items-center border-b border-border/40",
-                collapsed ? "justify-center px-2" : "justify-between px-4"
+                "flex h-20 items-center border-b border-border/40 transition-all",
+                collapsed ? "justify-center px-2" : "justify-between px-6"
             )}>
                 <Link href="/" className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-violet-600 shadow-lg shadow-violet-500/20">
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-violet-600 shadow-lg shadow-violet-500/30">
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 24 24"
@@ -145,99 +90,89 @@ export function Sidebar() {
                         </svg>
                     </div>
                     {!collapsed && (
-                        <span className="text-xl font-bold text-violet-500 whitespace-nowrap">
+                        <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-purple-600">
                             WineLab
                         </span>
                     )}
                 </Link>
 
-                {!collapsed && (
+                <button
+                    onClick={toggleCollapsed}
+                    className={cn(
+                        "p-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors",
+                        collapsed && "hidden" // Скрываем нативную кнопку внутри, если свернуто (бургер будет ниже?) 
+                    )}
+                >
+                    <ChevronLeft className={cn("h-5 w-5 transition-transform", collapsed && "rotate-180")} />
+                </button>
+
+                {collapsed && (
                     <button
                         onClick={toggleCollapsed}
-                        className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+                        className="absolute -right-3 top-7 h-6 w-6 rounded-full bg-primary flex items-center justify-center text-white shadow-lg border border-border"
                     >
-                        <ChevronLeft className="h-5 w-5" />
+                        <Menu className="h-3 w-3" />
                     </button>
                 )}
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-4">
-                {navGroups.map((group, groupIndex) => (
-                    <div key={group.title}>
-                        {!collapsed && group.title !== "Основное" && (
-                            <div
-                                className="flex items-center justify-between px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
-                                onClick={() => toggleGroup(group.title)}
-                            >
-                                {group.title}
-                                <ChevronLeft className={cn(
-                                    "h-3 w-3 transition-transform duration-200",
-                                    openGroups[group.title] ? "-rotate-90" : "rotate-0"
-                                )} />
+            <div className="h-[calc(100vh-5rem)] overflow-y-auto overflow-x-hidden py-6 custom-scrollbar">
+                {navGroups.map((group, idx) => {
+                    const filteredItems = group.items.filter(item =>
+                        !('roles' in item) || (user && (item.roles as any).includes(user.role))
+                    );
+
+                    if (filteredItems.length === 0) return null;
+
+                    return (
+                        <div key={group.name} className={cn("mb-8", collapsed ? "px-2" : "px-4")}>
+                            {!collapsed && (
+                                <h3 className="mb-4 px-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground/50">
+                                    {group.name}
+                                </h3>
+                            )}
+                            <div className="space-y-1">
+                                {filteredItems.map((item) => {
+                                    const isActive = pathname === item.href;
+                                    const Icon = item.icon;
+
+                                    return (
+                                        <Link
+                                            key={item.href}
+                                            href={item.href}
+                                            className={cn(
+                                                "sidebar-item group relative",
+                                                isActive ? "sidebar-item-active" : "text-muted-foreground hover:text-foreground"
+                                            )}
+                                        >
+                                            <Icon className={cn(
+                                                "h-5 w-5 transition-colors",
+                                                isActive ? "text-white" : "group-hover:text-primary"
+                                            )} />
+                                            {!collapsed && (
+                                                <span className="ml-3 font-medium transition-opacity duration-200">
+                                                    {item.name}
+                                                </span>
+                                            )}
+                                            {!collapsed && 'badge' in item && (item as any).badge > 0 && (
+                                                <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary/20 px-1.5 text-[10px] font-bold text-primary">
+                                                    {(item as any).badge}
+                                                </span>
+                                            )}
+                                            {collapsed && isActive && (
+                                                <div className="absolute left-0 h-8 w-1 rounded-r-full bg-primary shadow-[0_0_10px_rgb(var(--primary))]" />
+                                            )}
+                                        </Link>
+                                    );
+                                })}
                             </div>
-                        )}
-
-                        {/* Always show "Основное" items, or if group is open */}
-                        {(group.title === "Основное" || openGroups[group.title] || collapsed) && (
-                            <ul className="space-y-1">
-                                {group.items
-                                    .filter((item) => !item.roles || hasRole(item.roles as any))
-                                    .map((item) => {
-                                        const isActive = pathname === item.href ||
-                                            (item.href !== "/" && pathname.startsWith(item.href));
-
-                                        return (
-                                            <li key={item.name}>
-                                                <Link
-                                                    href={item.href}
-                                                    className={cn(
-                                                        "sidebar-item relative",
-                                                        isActive && "sidebar-item-active",
-                                                        collapsed && "justify-center px-2"
-                                                    )}
-                                                    title={collapsed ? item.name : undefined}
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <item.icon className={cn(
-                                                            "h-5 w-5 shrink-0 transition-colors",
-                                                            isActive ? "text-primary" : "text-muted-foreground"
-                                                        )} />
-                                                        {!collapsed && <span>{item.name}</span>}
-                                                    </div>
-
-                                                    {/* Badge Counter */}
-                                                    {item.badge !== undefined && item.badge > 0 && (
-                                                        <div className={cn(
-                                                            "flex items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-sm ring-1 ring-background",
-                                                            collapsed ? "absolute -top-1 -right-1 h-5 w-5" : "ml-auto h-5 px-1.5 min-w-[20px]"
-                                                        )}>
-                                                            {item.badge}
-                                                        </div>
-                                                    )}
-                                                </Link>
-                                            </li>
-                                        );
-                                    })}
-                            </ul>
-                        )}
-                    </div>
-                ))}
-            </nav>
-
-            {/* Bottom Actions */}
-            <div className="border-t border-border/40 py-4 px-3">
-                <button
-                    onClick={() => logout()}
-                    className={cn(
-                        "sidebar-item w-full text-destructive hover:bg-destructive/10 hover:text-destructive",
-                        collapsed && "justify-center px-2"
-                    )}
-                    title={collapsed ? "Выйти" : undefined}
-                >
-                    <LogOut className="h-5 w-5 shrink-0" />
-                    {!collapsed && <span>Выйти</span>}
-                </button>
+                            {idx < navGroups.length - 1 && !collapsed && (
+                                <div className="mt-8 h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
+                            )}
+                        </div>
+                    );
+                })}
             </div>
         </aside>
     );

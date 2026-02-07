@@ -1,3 +1,4 @@
+
 'use client';
 
 import { ReactNode, useState, useEffect } from 'react';
@@ -12,14 +13,11 @@ export function ClientWrapper({ children }: { children: ReactNode }) {
         setMounted(true);
     }, []);
 
-    // Show a simple loading state during SSR/hydration
+    // During SSR, rendered a minimal shell to avoid Context errors
     if (!mounted) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-background">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="h-12 w-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-                    <p className="text-muted-foreground">Загрузка...</p>
-                </div>
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="h-8 w-8 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
             </div>
         );
     }
