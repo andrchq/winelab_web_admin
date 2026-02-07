@@ -3,22 +3,39 @@
 import { useState, useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Plus, Search, Calendar, PackageCheck, AlertCircle, FileText, ArrowRight, Check, MapPin, AlertTriangle, Loader2 } from "lucide-react";
+import { Plus, Search, Calendar, PackageCheck, AlertCircle, FileText, ArrowRight, Check, MapPin, AlertTriangle, Loader2, FileSpreadsheet, Keyboard } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useWarehouses, useReceivingSessions } from "@/lib/hooks";
+import { useWarehouses } from "@/lib/hooks";
+import { receivingService, ReceivingSession } from "@/lib/receiving-service";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { ReceivingSession, ReceivingStatus } from "@/types/api";
+import type { ReceivingStatus } from "@/types/api";
 
 export default function ReceivingPage() {
     const router = useRouter();
-    const { data: sessions, isLoading, error } = useReceivingSessions();
+    const [sessions, setSessions] = useState<ReceivingSession[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
     const [searchTerm, setSearchTerm] = useState("");
-    const [statusFilter, setStatusFilter] = useState<'all' | ReceivingStatus>('all');
+
+    useEffect(() => {
+        try {
+            const data = receivingService.getAll();
+            setSessions(data);
+        } catch (err) {
+            setError("Failed to load local sessions");
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+    const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'in_progress' | 'completed'>('all');
     const [warehouseFilter, setWarehouseFilter] = useState<string>('all');
+    const [typeFilter, setTypeFilter] = useState<'all' | 'manual' | 'file'>('all');
     const [problemsOnly, setProblemsOnly] = useState(false);
     const { data: warehouses } = useWarehouses();
 
@@ -26,26 +43,26 @@ export default function ReceivingPage() {
         return warehouses?.find(w => w.id === id)?.name || id;
     };
 
-    const getStatusColor = (status: ReceivingStatus) => {
+    const getStatusColor = (status: string) => {
         switch (status) {
-            case 'DRAFT': return "secondary";
-            case 'IN_PROGRESS': return "default";
-            case 'COMPLETED': return "success";
+            case 'draft': return "secondary";
+            case 'in_progress': return "default";
+            case 'completed': return "success";
             default: return "outline";
         }
     };
 
-    const getStatusText = (status: ReceivingStatus) => {
+    const getStatusText = (status: string) => {
         switch (status) {
-            case 'DRAFT': return "Черновик";
-            case 'IN_PROGRESS': return "В процессе";
-            case 'COMPLETED': return "Завершено";
+            case 'draft': return "Черновик";
+            case 'in_progress': return "В процессе";
+            case 'completed': return "Завершено";
             default: return status;
         }
     };
 
     const filteredSessions = (sessions || []).filter(session => {
-        const warehouseName = session.warehouse?.name || getWarehouseName(session.warehouseId);
+        const warehouseName = getWarehouseName(session.warehouseId);
         const matchesSearch =
             warehouseName.toLowerCase().includes(searchTerm.toLowerCase()) ||
             session.warehouseId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -55,17 +72,23 @@ export default function ReceivingPage() {
         const matchesStatus = statusFilter === 'all' || session.status === statusFilter;
         const matchesWarehouse = warehouseFilter === 'all' || session.warehouseId === warehouseFilter;
 
-        const hasProblems = session.items.some(item => item.scannedQuantity > item.expectedQuantity);
+        // Type filtering
+        const isManual = session.type === 'manual' || (!session.type && session.invoiceNumber?.includes('Manual_Invoice'));
+        const matchesType = typeFilter === 'all' ||
+            (typeFilter === 'manual' && isManual) ||
+            (typeFilter === 'file' && !isManual);
+
+        const hasProblems = session.items.some(item => item.scannedQuantity > item.quantity);
         const matchesProblems = !problemsOnly || hasProblems;
 
-        return matchesSearch && matchesStatus && matchesWarehouse && matchesProblems;
+        return matchesSearch && matchesStatus && matchesWarehouse && matchesProblems && matchesType;
     });
 
     const statusOptions = [
         { value: 'all', label: 'Все', count: (sessions || []).length },
-        { value: 'IN_PROGRESS', label: 'В процессе', count: (sessions || []).filter(s => s.status === 'IN_PROGRESS').length },
-        { value: 'COMPLETED', label: 'Завершено', count: (sessions || []).filter(s => s.status === 'COMPLETED').length },
-        { value: 'DRAFT', label: 'Черновик', count: (sessions || []).filter(s => s.status === 'DRAFT').length },
+        { value: 'in_progress', label: 'В процессе', count: (sessions || []).filter(s => s.status === 'in_progress').length },
+        { value: 'completed', label: 'Завершено', count: (sessions || []).filter(s => s.status === 'completed').length },
+        { value: 'draft', label: 'Черновик', count: (sessions || []).filter(s => s.status === 'draft').length },
     ] as const;
 
     if (isLoading) {
@@ -139,6 +162,28 @@ export default function ReceivingPage() {
                                 </Select>
                             </div>
 
+                            {/* Type Filter */}
+                            <div className="w-full md:w-48">
+                                <Select value={typeFilter} onValueChange={(v: any) => setTypeFilter(v)}>
+                                    <SelectTrigger className="h-12 md:h-14 rounded-2xl bg-muted/20 border-border/50 text-left px-4 hover:bg-muted/30 transition-all font-semibold">
+                                        <div className="flex items-center gap-2 truncate">
+                                            {typeFilter === 'manual' ? <Keyboard className="h-4 w-4 shrink-0 text-primary/70" /> :
+                                                typeFilter === 'file' ? <FileSpreadsheet className="h-4 w-4 shrink-0 text-primary/70" /> :
+                                                    <FileText className="h-4 w-4 shrink-0 text-primary/70" />}
+                                            <div className="flex flex-col items-start leading-none overflow-hidden">
+                                                <span className="text-[10px] uppercase tracking-widest opacity-60 mb-0.5">Тип</span>
+                                                <SelectValue placeholder="Все типы" />
+                                            </div>
+                                        </div>
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl">
+                                        <SelectItem value="all">Все типы</SelectItem>
+                                        <SelectItem value="file">По файлу</SelectItem>
+                                        <SelectItem value="manual">Вручную</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
                             {/* 3. Status Filters */}
                             <div className="flex-1 min-w-0 bg-muted/5 rounded-2xl p-1.5 border border-border/20 flex items-center">
                                 <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 md:gap-2 w-full">
@@ -185,7 +230,7 @@ export default function ReceivingPage() {
                 {/* Sessions List */}
                 <div className="grid gap-3 md:gap-4">
                     {filteredSessions.map((session) => {
-                        const totalItems = session.items.reduce((s, i) => s + i.expectedQuantity, 0);
+                        const totalItems = session.items.reduce((s, i) => s + i.quantity, 0);
                         const scannedItems = session.items.reduce((s, i) => s + i.scannedQuantity, 0);
 
                         return (
@@ -198,8 +243,8 @@ export default function ReceivingPage() {
                                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 md:gap-6">
                                         {/* Status & ID */}
                                         <div className="flex items-start gap-4 flex-1 min-w-0">
-                                            <div className={`p-3 rounded-2xl shrink-0 transition-colors ${session.status === 'COMPLETED' ? 'bg-green-500/10 text-green-500' :
-                                                session.status === 'IN_PROGRESS' ? 'bg-primary/10 text-primary' :
+                                            <div className={`p-3 rounded-2xl shrink-0 transition-colors ${session.status === 'completed' ? 'bg-green-500/10 text-green-500' :
+                                                session.status === 'in_progress' ? 'bg-primary/10 text-primary' :
                                                     'bg-muted/50 text-muted-foreground'
                                                 }`}>
                                                 <PackageCheck className="h-6 w-6" />
@@ -213,8 +258,17 @@ export default function ReceivingPage() {
                                                 {/* Invoice & Supplier Info */}
                                                 <div className="text-xs md:text-sm text-muted-foreground flex items-center gap-x-3 gap-y-1 flex-wrap mb-2">
                                                     <span className="flex items-center gap-1.5 min-w-0">
-                                                        <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                                                        <span className="truncate">{session.invoiceNumber || "Нет накладной"}</span>
+                                                        {session.type === 'manual' || (!session.type && session.invoiceNumber?.includes('Manual_Invoice')) ? (
+                                                            <>
+                                                                <Keyboard className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                                                                <span className="truncate">Ручная приемка</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                                                                <span className="truncate">{session.invoiceNumber || "Нет накладной"}</span>
+                                                            </>
+                                                        )}
                                                     </span>
                                                     <span className="flex items-center gap-1.5">
                                                         <PackageCheck className="h-3.5 w-3.5 shrink-0 opacity-70" />
@@ -227,7 +281,7 @@ export default function ReceivingPage() {
                                                     <div className="flex items-center gap-2 text-sm font-bold text-foreground/90">
                                                         <div className="h-2 w-2 rounded-full bg-primary shrink-0" />
                                                         <span className="uppercase text-[10px] tracking-widest opacity-60 font-bold mr-1 shrink-0">Склад:</span>
-                                                        <span className="truncate">{session.warehouse?.name || getWarehouseName(session.warehouseId)}</span>
+                                                        <span className="truncate">{getWarehouseName(session.warehouseId)}</span>
                                                     </div>
 
                                                     <div className="flex items-center gap-4 flex-wrap text-[11px] font-mono font-medium text-muted-foreground">
@@ -235,7 +289,7 @@ export default function ReceivingPage() {
                                                             <Calendar className="h-3 w-3 opacity-60" />
                                                             <span>Старт: {new Date(session.createdAt).toLocaleDateString()} {new Date(session.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                                         </div>
-                                                        {(session.completedAt || session.status === 'COMPLETED') && (
+                                                        {(session.completedAt || session.status === 'completed') && (
                                                             <div className="flex items-center gap-1.5 bg-green-500/5 text-green-600/80 px-2 py-0.5 rounded border border-green-500/10">
                                                                 <Check className="h-3 w-3 opacity-80" />
                                                                 <span>Финиш: {session.completedAt
@@ -259,7 +313,7 @@ export default function ReceivingPage() {
                                                 </div>
                                                 <div className="w-full bg-muted/50 h-2.5 rounded-full overflow-hidden p-0.5 border border-muted/10">
                                                     <div
-                                                        className={`h-full rounded-full transition-all duration-700 shadow-sm ${session.status === 'COMPLETED' ? 'bg-green-500' : 'bg-primary'
+                                                        className={`h-full rounded-full transition-all duration-700 shadow-sm ${session.status === 'completed' ? 'bg-green-500' : 'bg-primary'
                                                             }`}
                                                         style={{ width: `${(scannedItems / (totalItems || 1)) * 100}%` }}
                                                     />
@@ -270,7 +324,7 @@ export default function ReceivingPage() {
                                     </div>
                                 </CardContent>
                                 {
-                                    session.status === 'IN_PROGRESS' && (
+                                    session.status === 'in_progress' && (
                                         <div className="absolute top-0 left-0 w-1 h-full bg-primary/40" />
                                     )
                                 }

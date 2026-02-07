@@ -6,10 +6,17 @@ import { AssetProcess } from '@prisma/client';
 export class ProductsService {
     constructor(private prisma: PrismaService) { }
 
-    async findAll() {
+    async findAll(categoryCode?: string) {
+        const where: any = { isActive: true };
+
+        if (categoryCode) {
+            where.category = { code: categoryCode };
+        }
+
         const products = await this.prisma.product.findMany({
-            where: { isActive: true },
+            where,
             include: {
+                category: true,
                 stockItems: {
                     select: {
                         quantity: true,
@@ -81,14 +88,49 @@ export class ProductsService {
     }
 
     async create(data: { name: string; sku: string; category: string; description?: string }) {
-        return this.prisma.product.create({ data });
+        const { category, ...rest } = data as any;
+        // Remove categoryId if it exists in rest to avoid "Unknown argument" or double-write error
+        if ('categoryId' in rest) {
+            delete rest.categoryId;
+        }
+
+        try {
+            return await this.prisma.product.create({
+                data: {
+                    ...rest,
+                    category: {
+                        connect: { id: category }
+                    }
+                }
+            });
+        } catch (error: any) {
+            console.error('Error creating product:', error);
+            // Log full error details for debugging
+            if (error.code) console.error('Prisma Error Code:', error.code);
+            if (error.meta) console.error('Prisma Error Meta:', error.meta);
+            throw error; // Re-throw to let NestJS handle it (Internal Server Error is default)
+        }
     }
 
     async update(id: string, data: { name?: string; category?: string; description?: string }) {
         await this.findById(id);
+        const { category, ...rest } = data as any;
+
+        // Remove categoryId if it exists in rest
+        if ('categoryId' in rest) {
+            delete rest.categoryId;
+        }
+
         return this.prisma.product.update({
             where: { id },
-            data,
+            data: {
+                ...rest,
+                ...(category && {
+                    category: {
+                        connect: { id: category }
+                    }
+                })
+            },
         });
     }
 

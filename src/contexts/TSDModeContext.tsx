@@ -73,15 +73,15 @@ export function TSDModeProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem('winelab_tsd_mode', 'true');
         setIsTSDMode(true);
         setShowPrompt(false);
-        // Redirect to receiving new or list? User said "starts with loading document"
-        // Let's redirect to /receiving/new
-        router.push('/receiving/new');
+        // Redirect to TSD Dashboard
+        router.push('/tsd');
     };
 
     const disableTSDMode = () => {
         localStorage.setItem('winelab_tsd_mode', 'false');
         setIsTSDMode(false);
         setShowPrompt(false);
+        router.push('/');
     };
 
     return (
@@ -114,13 +114,7 @@ export function TSDModeProvider({ children }: { children: React.ReactNode }) {
                     {children}
                 </div>
 
-                {isTSDMode && (
-                    <div className="p-4 border-t bg-background shrink-0 z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-                        <Button variant="destructive" size="lg" className="w-full" onClick={disableTSDMode}>
-                            Выход из режима TSD
-                        </Button>
-                    </div>
-                )}
+                {/* Global Exit Button Removed - Moved to individual pages */}
             </div>
         </TSDModeContext.Provider>
     );

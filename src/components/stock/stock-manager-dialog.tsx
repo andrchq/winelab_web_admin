@@ -41,7 +41,8 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
         if (open && product && warehouses) {
             setSku(product.sku);
             setName(product.name);
-            setCategory(product.category);
+            setName(product.name);
+            setCategory(product.category.name);
 
             // Map existing stock items to warehouses
             const states: WarehouseState[] = warehouses.map(wh => {
@@ -65,11 +66,10 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
 
         try {
             // 1. Update Product Details (SKU, Name, Category) if changed
-            if (sku !== product.sku || name !== product.name || category !== product.category) {
+            if (sku !== product.sku || name !== product.name) {
                 await api.patch(`/products/${product.id}`, {
                     sku,
-                    name,
-                    category
+                    name
                 });
             }
 
@@ -172,7 +172,8 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                             <Input
                                 id="category"
                                 value={category}
-                                onChange={(e) => setCategory(e.target.value)}
+                                disabled
+                                className="bg-muted opacity-100 cursor-not-allowed"
                                 placeholder="Категория"
                             />
                         </div>

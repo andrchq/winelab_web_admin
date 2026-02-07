@@ -14,15 +14,7 @@ interface AddProductDialogProps {
     onSuccess?: () => void;
 }
 
-const CATEGORIES = [
-    "Сетевое",
-    "Торговое",
-    "Безопасность",
-    "Компьютерное",
-    "Периферия",
-    "Расходные материалы",
-    "Прочее"
-];
+import { useCategories } from "@/lib/hooks";
 
 export function AddProductDialog({ onSuccess }: AddProductDialogProps) {
     const [open, setOpen] = useState(false);
@@ -34,12 +26,17 @@ export function AddProductDialog({ onSuccess }: AddProductDialogProps) {
         description: ""
     });
 
+    const { data: categories, isLoading: isCategoriesLoading } = useCategories();
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
 
         try {
-            await api.post('/products', formData);
+            await api.post('/products', {
+                ...formData,
+                categoryId: formData.category // Send categoryId
+            });
             toast.success("Модель добавлена");
             setOpen(false);
             setFormData({ name: "", sku: "", category: "", description: "" });
@@ -99,10 +96,15 @@ export function AddProductDialog({ onSuccess }: AddProductDialogProps) {
                                 <SelectTrigger>
                                     <SelectValue placeholder="Выберите" />
                                 </SelectTrigger>
-                                <SelectContent>
-                                    {CATEGORIES.map((category) => (
-                                        <SelectItem key={category} value={category}>
-                                            {category}
+                                <SelectContent className="max-h-[300px]">
+                                    {categories?.map((cat) => (
+                                        <SelectItem key={cat.id} value={cat.id}>
+                                            <div className="flex items-center gap-2">
+                                                <span>{cat.name}</span>
+                                                {cat.isMandatory && (
+                                                    <span className="text-xs text-muted-foreground">(Обязательное)</span>
+                                                )}
+                                            </div>
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

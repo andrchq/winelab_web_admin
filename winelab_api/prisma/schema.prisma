@@ -98,11 +98,34 @@ model User {
   @@map("users")
 }
 
+model EquipmentCategory {
+  id          String   @id @default(uuid())
+  code        String   @unique // SYSTEM_CODE (e.g. SERVER)
+  name        String   // Display Name (e.g. Сервер)
+  isMandatory Boolean  @default(false)
+  
+  // Hierarchy
+  parentId    String?
+  parent      EquipmentCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    EquipmentCategory[] @relation("CategoryHierarchy")
+
+  // Relations
+  products    Product[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("equipment_categories")
+}
+
 model Product {
   id          String   @id @default(uuid())
   name        String
   sku         String   @unique
-  category    String
+  
+  categoryId  String
+  category    EquipmentCategory @relation(fields: [categoryId], references: [id])
+  
   description String?
   imageUrl    String?
   isActive    Boolean  @default(true)

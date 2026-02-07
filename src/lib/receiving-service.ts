@@ -21,6 +21,7 @@ export interface ReceivingSession {
     completedAt?: string;
     invoiceNumber?: string;
     supplier?: string;
+    type?: 'manual' | 'file';
 }
 
 const STORAGE_KEY = 'winelab_receiving_sessions';
@@ -67,7 +68,9 @@ export const receivingService = {
                 scannedQuantity: 0,
                 scans: []
             })),
-            invoiceNumber: data.invoiceNumber
+            invoiceNumber: data.invoiceNumber,
+            supplier: data.supplier,
+            type: data.type
         };
         receivingService.save(session);
         return session;

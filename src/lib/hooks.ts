@@ -4,8 +4,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { api, getAuthToken } from './api';
 import type {
     Shipment, Delivery, User, StockItem, Warehouse, WarehouseDetails, Request as ApiRequest,
-    Asset, Store, Product
+    Asset, Store, Product, EquipmentCategory
 } from '@/types/api';
+
+// Categories
+export function useCategories() {
+    return useList<EquipmentCategory>('/categories');
+}
 
 interface UseDataOptions {
     autoFetch?: boolean;
@@ -54,6 +59,8 @@ function useData<T>(
     return { data, isLoading, error, refetch: fetch };
 }
 
+const EMPTY_LIST: any[] = [];
+
 function useList<T>(
     endpoint: string,
     options: UseDataOptions = { autoFetch: true }
@@ -61,7 +68,7 @@ function useList<T>(
     const result = useData<T[]>(endpoint, options);
     return {
         ...result,
-        data: result.data || [],
+        data: result.data || (EMPTY_LIST as T[]),
     };
 }
 

@@ -1,7 +1,8 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useWarehouse } from "@/lib/hooks";
+import { useState, useMemo } from "react";
+import { useWarehouse, useProducts } from "@/lib/hooks";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, StatCard } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Warehouse, MapPin, Package, AlertTriangle, User as UserIcon, Store as StoreIcon, Activity } from "lucide-react";
@@ -13,7 +14,82 @@ export default function WarehouseDetailsPage() {
     const router = useRouter();
     const id = params?.id as string;
 
+    const [showAllCritical, setShowAllCritical] = useState(false);
+    const [showAllSufficient, setShowAllSufficient] = useState(false);
+
     const { data: warehouse, isLoading, error } = useWarehouse(id);
+    const { data: products } = useProducts();
+
+    const categoryOrder = [
+        "Сервер",
+        "Маршрутизатор",
+        "Коммутатор",
+        "Фискальный регистратор",
+        "Касса",
+        "Денежный ящик",
+        "Монитор для кассы",
+        "Компьютер",
+        "Монитор для ПК",
+        "МФУ",
+        "ТСД",
+        "Термопринтер",
+        "Точка WiFi",
+        "Сканер"
+    ];
+
+    const productsMap = useMemo(() => {
+        if (!products) return new Map();
+        return new Map(products.map(p => [p.id, p]));
+    }, [products]);
+
+    const getCategoryIndex = (name: string) => {
+        const index = categoryOrder.findIndex(cat => name.toLowerCase().includes(cat.toLowerCase()));
+        return index === -1 ? 999 : index;
+    };
+
+    const criticalItems = useMemo(() => {
+        if (!warehouse?.stockItems) return [];
+        return warehouse.stockItems
+            .filter(item => item.quantity <= item.minQuantity)
+            .map(item => ({
+                ...item,
+                product: productsMap.get(item.productId) || item.product
+            }))
+            .sort((a, b) => {
+                // First sort by quantity (ascending)
+                if (a.quantity !== b.quantity) return a.quantity - b.quantity;
+
+                // Then by category priority
+                const catA = a.product?.category?.name || "";
+                const catB = b.product?.category?.name || "";
+                const indexA = getCategoryIndex(catA);
+                const indexB = getCategoryIndex(catB);
+
+                if (indexA !== indexB) return indexA - indexB;
+
+                // Finally by product name
+                return (a.product?.name || "").localeCompare(b.product?.name || "");
+            });
+    }, [warehouse, productsMap]);
+
+    const sufficientItems = useMemo(() => {
+        if (!warehouse?.stockItems) return [];
+        return warehouse.stockItems
+            .filter(item => item.quantity > item.minQuantity)
+            .map(item => ({
+                ...item,
+                product: productsMap.get(item.productId) || item.product
+            }))
+            .sort((a, b) => {
+                const catA = a.product?.category?.name || "";
+                const catB = b.product?.category?.name || "";
+                const indexA = getCategoryIndex(catA);
+                const indexB = getCategoryIndex(catB);
+
+                if (indexA !== indexB) return indexA - indexB;
+                return (a.product?.name || "").localeCompare(b.product?.name || "");
+            });
+    }, [warehouse, productsMap]);
 
     const formatDate = (dateString: string) => {
         if (!dateString) return "";
@@ -63,8 +139,12 @@ export default function WarehouseDetailsPage() {
         );
     }
 
-    const criticalItems = warehouse.stockItems?.filter(item => item.quantity <= item.minQuantity) || [];
-    const sufficientItems = warehouse.stockItems?.filter(item => item.quantity > item.minQuantity) || [];
+
+
+
+
+    const visibleCriticalItems = showAllCritical ? criticalItems : criticalItems.slice(0, 4);
+    const visibleSufficientItems = showAllSufficient ? sufficientItems : sufficientItems.slice(0, 4);
 
     return (
         <main className="flex-1 overflow-y-auto p-6">
@@ -101,10 +181,10 @@ export default function WarehouseDetailsPage() {
                                 />
                                 <StatCard
                                     title="Критические остатки"
-                                    value={warehouse.stats?.lowStockPositions?.toString() || "0"}
+                                    value={criticalItems.length.toString()}
                                     icon={<AlertTriangle className="h-5 w-5" />}
-                                    status={(warehouse.stats?.lowStockPositions ?? 0) > 0 ? "danger" : "success"}
-                                    subtitle={(warehouse.stats?.lowStockPositions ?? 0) > 0 ? "Требует пополнения" : "В норме"}
+                                    status={criticalItems.length > 0 ? "danger" : "success"}
+                                    subtitle={criticalItems.length > 0 ? "Требует пополнения" : "В норме"}
                                 />
                             </div>
                         </div>
@@ -135,23 +215,41 @@ export default function WarehouseDetailsPage() {
                             <CardDescription>Необходимо закупить ({criticalItems.length})</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                            <div className="space-y-3">
                                 {criticalItems.length === 0 ? (
                                     <p className="text-sm text-muted-foreground text-center py-8">Критических позиций нет</p>
                                 ) : (
-                                    criticalItems.map((item) => (
-                                        <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-background/60 border border-red-200/20">
-                                            <div className="min-w-0 pr-2">
-                                                <div className="font-medium text-sm truncate" title={item.product?.name}>{item.product?.name || "Неизвестный товар"}</div>
-                                                <div className="text-xs text-muted-foreground">Мин. остаток: {item.minQuantity}</div>
+                                    <>
+                                        {visibleCriticalItems.map((item) => (
+                                            <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-background/60 border border-red-200/20">
+                                                <div className="flex items-center gap-3 min-w-0 flex-1 mr-4">
+                                                    <div className="font-medium text-sm truncate max-w-[200px]" title={item.product?.name}>
+                                                        {item.product?.name || "Неизвестный товар"}
+                                                    </div>
+                                                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0 bg-muted-foreground/10 text-muted-foreground hover:bg-muted-foreground/20 font-normal">
+                                                        {item.product?.category?.name || "Без категории"}
+                                                    </Badge>
+                                                    <div className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                                                        Мин: <span className="font-medium text-foreground">{item.minQuantity}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right shrink-0">
+                                                    <Badge variant="destructive" className="font-mono">
+                                                        {item.quantity} шт.
+                                                    </Badge>
+                                                </div>
                                             </div>
-                                            <div className="text-right shrink-0">
-                                                <Badge variant="destructive" className="font-mono">
-                                                    {item.quantity} шт.
-                                                </Badge>
-                                            </div>
-                                        </div>
-                                    ))
+                                        ))}
+                                        {criticalItems.length > 4 && (
+                                            <Button
+                                                variant="ghost"
+                                                className="w-full text-xs text-muted-foreground hover:text-red-500"
+                                                onClick={() => setShowAllCritical(!showAllCritical)}
+                                            >
+                                                {showAllCritical ? "Скрыть" : "ЕЩЕ"}
+                                            </Button>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </CardContent>
@@ -167,23 +265,41 @@ export default function WarehouseDetailsPage() {
                             <CardDescription>В наличии ({sufficientItems.length})</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                            <div className="space-y-3">
                                 {sufficientItems.length === 0 ? (
                                     <p className="text-sm text-muted-foreground text-center py-8">Нет данных</p>
                                 ) : (
-                                    sufficientItems.map((item) => (
-                                        <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-background/60 border border-green-200/20">
-                                            <div className="min-w-0 pr-2">
-                                                <div className="font-medium text-sm truncate" title={item.product?.name}>{item.product?.name || "Неизвестный товар"}</div>
-                                                <div className="text-xs text-muted-foreground">Мин. остаток: {item.minQuantity}</div>
+                                    <>
+                                        {visibleSufficientItems.map((item) => (
+                                            <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-background/60 border border-green-200/20">
+                                                <div className="flex items-center gap-3 min-w-0 flex-1 mr-4">
+                                                    <div className="font-medium text-sm truncate max-w-[200px]" title={item.product?.name}>
+                                                        {item.product?.name || "Неизвестный товар"}
+                                                    </div>
+                                                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0 bg-muted-foreground/10 text-muted-foreground hover:bg-muted-foreground/20 font-normal">
+                                                        {item.product?.category?.name || "Без категории"}
+                                                    </Badge>
+                                                    <div className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                                                        Мин: <span className="font-medium text-foreground">{item.minQuantity}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right shrink-0">
+                                                    <Badge variant="outline" className="font-mono bg-green-500/10 text-green-600 border-green-500/30">
+                                                        {item.quantity} шт.
+                                                    </Badge>
+                                                </div>
                                             </div>
-                                            <div className="text-right shrink-0">
-                                                <Badge variant="outline" className="font-mono bg-green-500/10 text-green-600 border-green-500/30">
-                                                    {item.quantity} шт.
-                                                </Badge>
-                                            </div>
-                                        </div>
-                                    ))
+                                        ))}
+                                        {sufficientItems.length > 4 && (
+                                            <Button
+                                                variant="ghost"
+                                                className="w-full text-xs text-muted-foreground hover:text-green-500"
+                                                onClick={() => setShowAllSufficient(!showAllSufficient)}
+                                            >
+                                                {showAllSufficient ? "Скрыть" : "ЕЩЕ"}
+                                            </Button>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </CardContent>

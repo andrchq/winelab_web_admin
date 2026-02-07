@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { ProductsService } from './products.service';
@@ -15,8 +15,8 @@ export class ProductsController {
 
     @Get()
     @ApiOperation({ summary: 'Список продуктов' })
-    async findAll() {
-        return this.productsService.findAll();
+    async findAll(@Query('category') category?: string) {
+        return this.productsService.findAll(category);
     }
 
     @Get(':id')

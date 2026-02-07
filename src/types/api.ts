@@ -21,11 +21,22 @@ export interface LoginResponse {
     refreshToken: string;
 }
 
+export interface EquipmentCategory {
+    id: string;
+    code: string;
+    name: string;
+    isMandatory: boolean;
+    parentId?: string;
+    parent?: EquipmentCategory;
+    children?: EquipmentCategory[];
+}
+
 export interface Product {
     id: string;
     name: string;
     sku: string;
-    category: string;
+    categoryId: string;
+    category: EquipmentCategory;
     description?: string;
     isActive: boolean;
     createdAt: string;
@@ -107,6 +118,7 @@ export interface Store {
     };
     assets?: any[];
     requests?: any[];
+    equipment?: StoreEquipment[];
     creator?: {
         name: string;
     };
@@ -158,7 +170,7 @@ export interface Shipment {
     id: string;
     requestId: string;
     warehouseId: string;
-    status: 'PENDING' | 'PICKING' | 'PACKED' | 'SHIPPED' | 'CANCELLED';
+    status: 'PENDING' | 'PICKING' | 'PACKED' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
     assembledBy?: string;
     createdAt: string;
     request?: {
@@ -267,25 +279,6 @@ export interface PingStatusResponse {
     provider2: boolean;
 }
 
-// Equipment Categories for Stores
-export type MandatoryEquipmentCategory =
-    | 'SERVER'           // Сервер
-    | 'ROUTER'           // Маршрутизатор
-    | 'SWITCH'           // Коммутатор
-    | 'CASH_REGISTER'    // Касса
-    | 'SCANNER'          // Сканер
-    | 'CASH_DRAWER'      // Денежный ящик
-    | 'FISCAL_REGISTRAR' // ФР
-    | 'COMPUTER'         // Компьютер
-    | 'PC_MONITOR'       // Монитор для ПК
-    | 'CASH_MONITOR'     // Монитор для кассы
-    | 'WIFI_AP'          // Точка WiFi
-    | 'MFU'              // МФУ
-    | 'TSD'              // ТСД
-    | 'THERMAL_PRINTER'  // Термопринтер
-    ;
-
-export type EquipmentCategory = MandatoryEquipmentCategory | 'ACCESSORY';
 
 export interface StoreEquipment {
     id: string;

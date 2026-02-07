@@ -28,6 +28,8 @@ export default function NewReceivingPage() {
     const [parsedItems, setParsedItems] = useState<InvoiceItem[]>([]);
     const [isParsing, setIsParsing] = useState(false);
     const [isManualDialogOpen, setIsManualDialogOpen] = useState(false);
+    const [supplier, setSupplier] = useState<string>("");
+    const [creationMethod, setCreationMethod] = useState<'file' | 'manual'>('file');
 
     // Mapping: invoiceItemId -> productId
     const [mapping, setMapping] = useState<Record<string, string>>({});
@@ -37,6 +39,8 @@ export default function NewReceivingPage() {
         const selectedFile = e.target.files?.[0];
         if (!selectedFile) return;
         setFile(selectedFile);
+        setCreationMethod('file');
+        setSupplier("");
         setIsParsing(true);
         try {
             const items = await parseInvoiceFile(selectedFile);
@@ -98,7 +102,9 @@ export default function NewReceivingPage() {
                 warehouseId,
                 items: parsedItems,
                 mapping,
-                invoiceNumber: file?.name // Use filename as invoice number for now
+                invoiceNumber: creationMethod === 'file' ? file?.name : undefined,
+                supplier: supplier, // Pass supplier
+                type: creationMethod
             });
             toast.success("Сессия приемки создана");
             router.push(`/receiving/${session.id}`);
@@ -110,6 +116,8 @@ export default function NewReceivingPage() {
     const handleManualSubmit = (items: InvoiceItem[], manualMapping: Record<string, string>, source: string) => {
         setParsedItems(items);
         setMapping(manualMapping);
+        setSupplier(source); // Capture supplier from manual dialog
+        setCreationMethod('manual');
 
         // Use a dummy file object so the rest of the UI thinks a file is loaded (for steps logic)
         // Or better, adjust the logic to not strictly require 'file' if parsedItems exist

@@ -9,6 +9,7 @@ import { SearchInput } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useStockItems } from "@/lib/hooks";
 import { AddStockDialog } from "@/components/stock/add-stock-dialog";
+import { AddProductDialog } from "@/components/stock/add-product-dialog";
 import { StockManagerDialog } from "@/components/stock/stock-manager-dialog";
 import { StockItem, Product } from "@/types/api";
 import { api } from "@/lib/api";
@@ -81,8 +82,9 @@ export default function StockPage() {
         });
     }, [stockItems]);
 
+
     const categories = useMemo(() => {
-        const cats = new Set(groupedItmes.map(g => g.product.category));
+        const cats = new Set(groupedItmes.map(g => g.product.category.name));
         return Array.from(cats).sort();
     }, [groupedItmes]);
 
@@ -93,7 +95,7 @@ export default function StockPage() {
                 g.product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 g.product.sku.toLowerCase().includes(searchTerm.toLowerCase());
 
-            const matchesCategory = categoryFilter === "all" || g.product.category === categoryFilter;
+            const matchesCategory = categoryFilter === "all" || g.product.category.name === categoryFilter;
             const matchesLow = showLowStock ? g.status === 'low' || g.status === 'out' : true;
 
             return matchesSearch && matchesCategory && matchesLow;
@@ -120,10 +122,13 @@ export default function StockPage() {
                 {/* Page Header */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold">Расходные материалы</h1>
-                        <p className="text-sm text-muted-foreground mt-1">Количественный учёт расходников</p>
+                        <h1 className="text-2xl font-bold">Складской учет</h1>
+                        <p className="text-sm text-muted-foreground mt-1">Управление остатками и справочником моделей</p>
                     </div>
                     <div className="flex gap-2">
+                        {hasRole(['ADMIN', 'MANAGER', 'WAREHOUSE']) && (
+                            <AddProductDialog onSuccess={refetch} />
+                        )}
                         <Button variant="gradient" onClick={() => setIsAddOpen(true)}>
                             <Plus className="h-4 w-4" />
                             Новая позиция
@@ -394,8 +399,27 @@ export default function StockPage() {
                         </div>
                     </CardContent>
                 </Card>
+
             </div>
-        </div>
+
+            <AddStockDialog
+                open={isAddOpen}
+                onOpenChange={setIsAddOpen}
+                onSuccess={refetch}
+            />
+
+            {
+                managerState.product && (
+                    <StockManagerDialog
+                        open={managerState.open}
+                        onOpenChange={(open) => setManagerState(prev => ({ ...prev, open }))}
+                        product={managerState.product}
+                        stockItems={managerState.items}
+                        onSuccess={refetch}
+                    />
+                )
+            }
+        </div >
 
     );
 }

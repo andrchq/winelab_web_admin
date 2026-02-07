@@ -50,7 +50,7 @@ export class StoresService {
             where: { id },
             include: {
                 assets: {
-                    include: { product: { select: { name: true } } },
+                    include: { product: { select: { name: true, category: true, sku: true } } },
                     orderBy: { createdAt: 'desc' },
                 },
                 requests: {

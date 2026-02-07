@@ -21,22 +21,24 @@ import {
     Camera,
     Copy,
     ExternalLink,
-    Trash2
+    Trash2,
+    Settings2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useStore } from "@/lib/hooks";
+import { useStore, useCategories } from "@/lib/hooks";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useMemo, useState, useEffect } from "react";
 import { YandexMap } from "@/components/maps";
 import { EditStoreDialog } from "@/components/stores/edit-store-dialog";
 import { AddStoreEquipmentDialog } from "@/components/stores/add-store-equipment-dialog";
-import type { StoreStatus, StoreEquipment } from "@/types/api";
-import { getMissingEquipment, MANDATORY_EQUIPMENT } from "@/lib/equipment-categories";
+import { EditAssetDialog } from "@/components/stores/edit-asset-dialog";
+import type { StoreStatus, StoreEquipment, Asset } from "@/types/api";
+import { getMissingEquipment, sortCategories } from "@/lib/equipment-categories";
 
 import { PingStatusResponse } from "@/types/api";
 import { cn } from "@/lib/utils";
@@ -190,17 +192,38 @@ export default function StoreDetailPage() {
     const id = params.id as string;
     const { data: store, isLoading, error, refetch } = useStore(id);
     const { hasRole } = useAuth();
+    const { data: categories } = useCategories();
     const [editOpen, setEditOpen] = useState(false);
     const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);
+    const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
     const [pingStatus, setPingStatus] = useState<PingStatusResponse | null>(null);
     const canDelete = hasRole(['ADMIN', 'MANAGER']);
 
+    // Unified equipment list (merging store.equipment and store.assets)
+    const effectiveEquipment = useMemo(() => {
+        if (!store) return [];
+
+        const fromAssets = (store.assets || [])
+            .filter((a: any) => a.processStatus === 'INSTALLED' && a.product?.category)
+            .map((a: any) => ({
+                id: a.id,
+                storeId: store.id,
+                category: a.product.category,
+                productName: a.product.name,
+                serialNumber: a.serialNumber,
+                skipInventory: false,
+                createdAt: a.createdAt
+            }));
+
+        // Combine with existing store.equipment if distinct
+        return [...(store.equipment || []), ...fromAssets];
+    }, [store]);
+
     // Missing equipment calculation
     const missingEquipment = useMemo(() => {
-        // For now, treat store.assets as equipment (will be replaced with real equipment data)
-        const storeEquipment: StoreEquipment[] = []; // TODO: Replace with store.equipment when API is ready
-        return getMissingEquipment(storeEquipment);
-    }, [store]);
+        if (!categories) return [];
+        return getMissingEquipment(effectiveEquipment, categories);
+    }, [effectiveEquipment, categories]);
 
     useEffect(() => {
         if (!store) return;
@@ -235,6 +258,19 @@ export default function StoreDetailPage() {
         return checkStoreCompleteness(store);
     }, [store]);
 
+    const handleDelete = async () => {
+        if (!confirm("Вы уверены, что хотите удалить этот магазин? Это действие нельзя отменить.")) return;
+
+        try {
+            await api.delete(`/stores/${id}`);
+            toast.success("Магазин удален");
+            router.push("/stores");
+        } catch (error) {
+            console.error(error);
+            toast.error("Не удалось удалить магазин");
+        }
+    };
+
     return (
         <div className="p-3 sm:p-6 h-full flex flex-col overflow-hidden">
             <div className="space-y-4 sm:space-y-6 animate-fade-in flex-1 overflow-y-auto no-scrollbar">
@@ -253,7 +289,7 @@ export default function StoreDetailPage() {
                             <span className="hidden sm:inline">Редактировать</span>
                         </Button>
                         {canDelete && (
-                            <Button variant="destructive" size="sm" className="gap-2 h-10">
+                            <Button variant="destructive" size="sm" className="gap-2 h-10" onClick={handleDelete}>
                                 <Trash2 className="h-4 w-4" />
                                 <span className="hidden sm:inline">Удалить</span>
                             </Button>
@@ -442,8 +478,8 @@ export default function StoreDetailPage() {
                                         </div>
                                         <div className="flex flex-wrap gap-1.5">
                                             {missingEquipment.map(eq => (
-                                                <Badge key={eq.category} variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs">
-                                                    {eq.labelShort}
+                                                <Badge key={eq.id} variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs">
+                                                    {eq.name}
                                                 </Badge>
                                             ))}
                                         </div>
@@ -452,22 +488,24 @@ export default function StoreDetailPage() {
 
                                 {/* Installed Equipment */}
                                 <Card className="border-border/50 shadow-sm overflow-hidden">
-                                    <CardHeader className="flex flex-col xs:flex-row xs:items-center justify-between p-4 md:p-6 space-y-3 xs:space-y-0 gap-2 xs:gap-4">
-                                        <div className="min-w-0">
-                                            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                                                <Boxes className="h-4 w-4 md:h-5 md:w-5 text-primary shrink-0" />
-                                                <span className="truncate">Установленное оборудование</span>
-                                            </CardTitle>
-                                            <CardDescription className="text-xs md:text-sm">{stats.installed} единиц</CardDescription>
+                                    <CardHeader className="flex flex-col gap-4 p-4 md:p-6">
+                                        <div className="flex items-center justify-between">
+                                            <div className="min-w-0">
+                                                <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                                                    <Boxes className="h-4 w-4 md:h-5 md:w-5 text-primary shrink-0" />
+                                                    <span className="truncate">Установленное оборудование</span>
+                                                </CardTitle>
+                                                <CardDescription className="text-xs md:text-sm">{stats.installed} единиц</CardDescription>
+                                            </div>
                                         </div>
                                         <Button
-                                            size="sm"
+                                            size="default"
                                             variant="outline"
-                                            className="gap-1 h-9 px-3 shrink-0 w-full xs:w-auto justify-center"
+                                            className="w-full justify-center gap-2 h-12 text-base font-medium"
                                             onClick={() => setAddEquipmentOpen(true)}
                                         >
-                                            <Plus className="h-3.5 w-3.5" />
-                                            <span>Добавить</span>
+                                            <Settings2 className="h-5 w-5" />
+                                            <span>Управление</span>
                                         </Button>
                                     </CardHeader>
                                     <CardContent>
@@ -476,30 +514,64 @@ export default function StoreDetailPage() {
                                                 Нет установленного оборудования
                                             </div>
                                         ) : (
-                                            <div className="space-y-2">
-                                                {store.assets?.filter((a: any) => a.processStatus === 'INSTALLED').map((item: any) => (
-                                                    <Link key={item.id} href={`/assets/${item.id}`}>
-                                                        <div className="flex items-center justify-between rounded-lg border border-border/50 p-3 hover:bg-accent/30 transition-colors cursor-pointer">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
-                                                                    <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                                            <div className="space-y-4">
+                                                {Object.entries(
+                                                    (store.assets?.filter((a: any) => a.processStatus === 'INSTALLED') || [])
+                                                        .reduce((groups: Record<string, any[]>, item: any) => {
+                                                            const catName = item.product?.category?.name || 'Без категории';
+                                                            if (!groups[catName]) groups[catName] = [];
+                                                            groups[catName].push(item);
+                                                            return groups;
+                                                        }, {})
+                                                )
+                                                    .sort((a, b) => sortCategories(a[0], b[0]))
+                                                    .map(([category, items]: [string, any[]]) => (
+                                                        <div key={category} className="space-y-2">
+                                                            <div className="relative flex items-center justify-center py-3">
+                                                                <div className="absolute inset-0 flex items-center">
+                                                                    <span className="w-full border-t border-border/40"></span>
                                                                 </div>
-                                                                <div>
-                                                                    <p className="font-medium">{item.product?.name}</p>
-                                                                    <p className="text-sm text-muted-foreground font-mono">{item.serialNumber}</p>
-                                                                </div>
+                                                                <span className="relative flex justify-center text-xs uppercase bg-card px-3 text-muted-foreground font-semibold tracking-wider">
+                                                                    {category}
+                                                                </span>
                                                             </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <Badge variant={conditionMap[item.condition]?.variant || "success"}>
-                                                                    {conditionMap[item.condition]?.label || "Работает"}
-                                                                </Badge>
-                                                                <Button variant="ghost" size="icon">
-                                                                    <Wrench className="h-4 w-4 text-muted-foreground" />
-                                                                </Button>
+                                                            <div className="grid gap-2">
+                                                                {items.map((item: any) => (
+                                                                    <Link key={item.id} href={`/assets/${item.id}`}>
+                                                                        <div className="flex items-center justify-between rounded-lg border border-border/50 p-2.5 hover:bg-accent/30 transition-colors cursor-pointer group">
+                                                                            <div className="flex items-center gap-3">
+                                                                                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-emerald-500/10 group-hover:bg-emerald-500/20 transition-colors">
+                                                                                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                                                                </div>
+                                                                                <div>
+                                                                                    <p className="font-medium text-sm">{item.product?.name}</p>
+                                                                                    <p className="text-xs text-muted-foreground font-mono">{item.serialNumber}</p>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <Badge variant={conditionMap[item.condition]?.variant || "success"} className="h-5 px-1.5 text-[10px]">
+                                                                                    {conditionMap[item.condition]?.label || "Работает"}
+                                                                                </Badge>
+                                                                                <Button
+                                                                                    variant="outline"
+                                                                                    size="sm"
+                                                                                    className="h-8 px-4 text-xs font-medium border-border/60 bg-transparent hover:bg-primary/20 hover:text-primary hover:border-primary/50 transition-all min-w-[120px]"
+                                                                                    onClick={(e) => {
+                                                                                        e.preventDefault();
+                                                                                        e.stopPropagation();
+                                                                                        setEditingAsset(item);
+                                                                                    }}
+                                                                                >
+                                                                                    <Wrench className="h-3 w-3 mr-1.5" />
+                                                                                    Редактировать
+                                                                                </Button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </Link>
+                                                                ))}
                                                             </div>
                                                         </div>
-                                                    </Link>
-                                                ))}
+                                                    ))}
                                             </div>
                                         )}
                                     </CardContent>
@@ -596,7 +668,7 @@ export default function StoreDetailPage() {
                 />
             )}
 
-            {/* Add Equipment Dialog */}
+            {/* Add/Manage Equipment Dialog */}
             {store && (
                 <AddStoreEquipmentDialog
                     storeId={store.id}
@@ -604,6 +676,22 @@ export default function StoreDetailPage() {
                     open={addEquipmentOpen}
                     onOpenChange={setAddEquipmentOpen}
                     onSuccess={() => refetch()}
+                    existingEquipment={effectiveEquipment}
+                    categories={categories || []}
+                />
+            )}
+
+            {/* Edit Asset Dialog */}
+            {editingAsset && (
+                <EditAssetDialog
+                    key={editingAsset.id}
+                    asset={editingAsset}
+                    open={!!editingAsset}
+                    onOpenChange={(open) => !open && setEditingAsset(null)}
+                    onSuccess={() => {
+                        setEditingAsset(null);
+                        refetch();
+                    }}
                 />
             )}
         </div>

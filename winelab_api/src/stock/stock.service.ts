@@ -8,7 +8,9 @@ export class StockService {
     async findAll() {
         return this.prisma.stockItem.findMany({
             include: {
-                product: true,
+                product: {
+                    include: { category: true }
+                },
                 warehouse: true,
             },
             orderBy: {
@@ -23,7 +25,9 @@ export class StockService {
         const item = await this.prisma.stockItem.findUnique({
             where: { id },
             include: {
-                product: true,
+                product: {
+                    include: { category: true }
+                },
                 warehouse: true,
             },
         });
@@ -54,7 +58,12 @@ export class StockService {
                     quantity: { increment: data.quantity },
                     minQuantity: data.minQuantity ?? existing.minQuantity,
                 },
-                include: { product: true, warehouse: true },
+                include: {
+                    product: {
+                        include: { category: true }
+                    },
+                    warehouse: true
+                },
             });
         }
 
@@ -65,7 +74,12 @@ export class StockService {
                 quantity: data.quantity,
                 minQuantity: data.minQuantity ?? 0,
             },
-            include: { product: true, warehouse: true },
+            include: {
+                product: {
+                    include: { category: true }
+                },
+                warehouse: true
+            },
         });
     }
 
@@ -73,7 +87,12 @@ export class StockService {
         return this.prisma.stockItem.update({
             where: { id },
             data,
-            include: { product: true, warehouse: true },
+            include: {
+                product: {
+                    include: { category: true }
+                },
+                warehouse: true
+            },
         });
     }
 
@@ -83,7 +102,12 @@ export class StockService {
             data: {
                 quantity: { increment: delta },
             },
-            include: { product: true, warehouse: true },
+            include: {
+                product: {
+                    include: { category: true }
+                },
+                warehouse: true
+            },
         });
     }
 

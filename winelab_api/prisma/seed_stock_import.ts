@@ -180,7 +180,23 @@ async function main() {
             });
 
             if (!product) {
-                const category = getCategory(itemName);
+                const categoryLabel = getCategory(itemName);
+                let categoryCode = 'ACCESSORY';
+
+                // Map labels to codes (approximate)
+                if (categoryLabel === 'Сетевое') categoryCode = 'SWITCH'; // Generic network
+                if (itemName.includes('Сервер')) categoryCode = 'SERVER';
+                if (itemName.includes('Маршрутизатор')) categoryCode = 'ROUTER';
+                if (itemName.includes('Точки доступа')) categoryCode = 'WIFI_AP';
+                if (itemName.includes('МФУ')) categoryCode = 'MFU';
+                if (itemName.includes('Кассовые') || itemName.includes('Касса')) categoryCode = 'CASH_REGISTER';
+                if (itemName.includes('Сканер')) categoryCode = 'SCANNER';
+                if (itemName.includes('ТСД')) categoryCode = 'TSD';
+                if (itemName.includes('Термопринтер')) categoryCode = 'THERMAL_PRINTER';
+                if (itemName.includes('ФР')) categoryCode = 'FISCAL_REGISTRAR';
+                if (itemName.includes('Монитор')) categoryCode = 'PC_MONITOR';
+                if (itemName.includes('ПК')) categoryCode = 'COMPUTER';
+
                 // Create unique SKU based on name hash if not real
                 // Actually let's try to be consistent. 
                 // Using name as seed for SKU? No, random is safer for now as this is a seed.
@@ -190,7 +206,9 @@ async function main() {
                 product = await prisma.product.create({
                     data: {
                         name: itemName,
-                        category: category,
+                        category: {
+                            connect: { code: categoryCode }
+                        },
                         sku: sku, // Ensure uniqueness logic? SKU is unique in schema.
                         // Simple retry logic if collision?
                     }

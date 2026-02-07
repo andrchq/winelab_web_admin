@@ -14,6 +14,7 @@ import { DeliveriesModule } from './deliveries/deliveries.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { EventsModule } from './events/events.module';
 import { ReceivingModule } from './receiving/receiving.module';
+import { CategoriesModule } from './categories/categories.module';
 
 @Module({
     imports: [
@@ -34,6 +35,7 @@ import { ReceivingModule } from './receiving/receiving.module';
         DashboardModule,
         EventsModule,
         ReceivingModule,
+        CategoriesModule,
     ],
 })
 export class AppModule { }

@@ -104,7 +104,18 @@ async function main() {
         await prisma.product.upsert({
             where: { sku: product.sku },
             update: {},
-            create: product,
+            create: {
+                name: product.name,
+                sku: product.sku,
+                category: {
+                    connect: {
+                        code: (product as any).category === 'Видеонаблюдение' ? 'CCTV' :
+                            (product as any).category === 'Сетевое оборудование' ? 'ROUTER' : // Simplified mapping for seed
+                                (product as any).category === 'Кассовое оборудование' ? 'CASH_REGISTER' :
+                                    (product as any).category === 'Периферия' ? 'SCANNER' : 'ACCESSORY'
+                    }
+                }
+            },
         });
     }
     console.log('✅ Products created');

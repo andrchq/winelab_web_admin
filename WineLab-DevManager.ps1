@@ -17,7 +17,7 @@ $consolePtr = [Console.Window]::GetConsoleWindow()
 # Main Form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "WineLab Dev Manager"
-$form.Size = New-Object System.Drawing.Size(500, 420)
+$form.Size = New-Object System.Drawing.Size(500, 470)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedSingle"
 $form.MaximizeBox = $false
@@ -75,6 +75,26 @@ $frontendStatus.ForeColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
 $frontendStatus.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $statusPanel.Controls.Add($frontendStatus)
 
+# pgAdmin Configuration
+$pgAdminPath = "E:\Posgres 18\pgAdmin 4\runtime\pgAdmin4.exe"
+
+# pgAdmin Status
+$pgAdminStatusLabel = New-Object System.Windows.Forms.Label
+$pgAdminStatusLabel.Text = "pgAdmin:"
+$pgAdminStatusLabel.Location = New-Object System.Drawing.Point(15, 86)
+$pgAdminStatusLabel.Size = New-Object System.Drawing.Size(180, 25)
+$pgAdminStatusLabel.ForeColor = [System.Drawing.Color]::White
+$pgAdminStatusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$statusPanel.Controls.Add($pgAdminStatusLabel)
+
+$pgAdminStatus = New-Object System.Windows.Forms.Label
+$pgAdminStatus.Text = "STOPPED"
+$pgAdminStatus.Location = New-Object System.Drawing.Point(200, 86)
+$pgAdminStatus.Size = New-Object System.Drawing.Size(150, 25)
+$pgAdminStatus.ForeColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
+$pgAdminStatus.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$statusPanel.Controls.Add($pgAdminStatus)
+
 # Log Label
 $logLabel = New-Object System.Windows.Forms.Label
 $logLabel.Text = "Console Log:"
@@ -108,20 +128,99 @@ function Write-Log {
 # Check port function
 function Test-Port {
     param([int]$port)
-    $result = netstat -aon | Select-String ":$port " | Select-String "LISTENING"
-    return $result -ne $null
+    try {
+        $tcpConnections = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction Stop
+        if ($tcpConnections) {
+            return $true
+        }
+        return $false
+    } catch {
+        # Fallback to netstat if Get-NetTCPConnection fails
+        try {
+            $netstatOutput = netstat -ano 2>$null | findstr ":$port " | findstr "LISTENING"
+            if ($netstatOutput) {
+                return $true
+            }
+        } catch {}
+        return $false
+    }
+}
+
+# Start pgAdmin function
+function Start-PgAdmin {
+    if (Get-Process -Name "pgAdmin4" -ErrorAction SilentlyContinue) {
+        Write-Log "pgAdmin is already running."
+    } else {
+        if (Test-Path $pgAdminPath) {
+            Write-Log "Starting pgAdmin..."
+            Start-Process -FilePath $pgAdminPath
+            Write-Log "pgAdmin started."
+        } else {
+            Write-Log "Error: pgAdmin path not found!"
+        }
+    }
+}
+
+# Stop pgAdmin function
+function Stop-PgAdmin {
+    $proc = Get-Process -Name "pgAdmin4" -ErrorAction SilentlyContinue
+    if ($proc) {
+        Write-Log "Stopping pgAdmin..."
+        Stop-Process -Name "pgAdmin4" -Force
+        Write-Log "pgAdmin stopped."
+    } else {
+        Write-Log "pgAdmin is not running."
+    }
 }
 
 # Kill port function
 function Stop-Port {
     param([int]$port)
-    $connections = netstat -aon | Select-String ":$port " | Select-String "LISTENING"
-    foreach ($conn in $connections) {
-        $parts = $conn -split '\s+'
-        $pid = $parts[-1]
-        if ($pid -match '^\d+$') {
-            Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    try {
+        $tcpConnections = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+        foreach ($conn in $tcpConnections) {
+            $processId = $conn.OwningProcess
+            if ($processId -and $processId -ne $PID) {
+                Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+            }
         }
+    } catch {
+        # Fallback to netstat
+        $output = netstat -ano | findstr ":$port " | findstr "LISTENING"
+        foreach ($line in $output -split "`n") {
+            if ($line -match '\s+(\d+)\s*$') {
+                $processId = $matches[1]
+                if ($processId -and $processId -ne $PID) {
+                    Stop-Process -Id ([int]$processId) -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+    }
+}
+
+# Store launched process IDs
+$script:apiProcessId = $null
+$script:frontendProcessId = $null
+
+# Stop launched PowerShell windows
+function Stop-LaunchedProcesses {
+    $currentPid = $PID
+    try {
+        if ($script:apiProcessId -and $script:apiProcessId -ne $currentPid) {
+            Stop-Process -Id $script:apiProcessId -Force -ErrorAction SilentlyContinue
+        }
+        $script:apiProcessId = $null
+        
+        if ($script:frontendProcessId -and $script:frontendProcessId -ne $currentPid) {
+            Stop-Process -Id $script:frontendProcessId -Force -ErrorAction SilentlyContinue
+        }
+        $script:frontendProcessId = $null
+        
+        # Also stop ports to be safe
+        Stop-Port 3001
+        Stop-Port 8888
+    } catch {
+        # Ignore errors
     }
 }
 
@@ -142,6 +241,14 @@ function Update-Status {
         $frontendStatus.Text = "STOPPED"
         $frontendStatus.ForeColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
     }
+
+    if (Get-Process -Name "pgAdmin4" -ErrorAction SilentlyContinue) {
+        $pgAdminStatus.Text = "RUNNING"
+        $pgAdminStatus.ForeColor = [System.Drawing.Color]::FromArgb(74, 222, 128)
+    } else {
+        $pgAdminStatus.Text = "STOPPED"
+        $pgAdminStatus.ForeColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
+    }
 }
 
 # Button styling helper
@@ -159,45 +266,75 @@ function Style-Button {
 $startButton = New-Object System.Windows.Forms.Button
 $startButton.Text = "START ALL"
 $startButton.Location = New-Object System.Drawing.Point(20, 330)
-$startButton.Size = New-Object System.Drawing.Size(140, 45)
+$startButton.Size = New-Object System.Drawing.Size(105, 45)
 Style-Button $startButton ([System.Drawing.Color]::FromArgb(34, 197, 94))
 $form.Controls.Add($startButton)
 
 # STOP Button
 $stopButton = New-Object System.Windows.Forms.Button
 $stopButton.Text = "STOP ALL"
-$stopButton.Location = New-Object System.Drawing.Point(175, 330)
-$stopButton.Size = New-Object System.Drawing.Size(140, 45)
+$stopButton.Location = New-Object System.Drawing.Point(130, 330)
+$stopButton.Size = New-Object System.Drawing.Size(105, 45)
 Style-Button $stopButton ([System.Drawing.Color]::FromArgb(239, 68, 68))
 $form.Controls.Add($stopButton)
 
+# RESTART Button
+$restartButton = New-Object System.Windows.Forms.Button
+$restartButton.Text = "RESTART"
+$restartButton.Location = New-Object System.Drawing.Point(240, 330)
+$restartButton.Size = New-Object System.Drawing.Size(105, 45)
+Style-Button $restartButton ([System.Drawing.Color]::FromArgb(251, 146, 60))
+$form.Controls.Add($restartButton)
+
 # OPEN Browser Button
 $openButton = New-Object System.Windows.Forms.Button
-$openButton.Text = "OPEN BROWSER"
-$openButton.Location = New-Object System.Drawing.Point(330, 330)
-$openButton.Size = New-Object System.Drawing.Size(135, 45)
+$openButton.Text = "BROWSER"
+$openButton.Location = New-Object System.Drawing.Point(350, 330)
+$openButton.Size = New-Object System.Drawing.Size(115, 45)
 Style-Button $openButton ([System.Drawing.Color]::FromArgb(59, 130, 246))
 $form.Controls.Add($openButton)
 
+# Start pgAdmin Button
+$startPgButton = New-Object System.Windows.Forms.Button
+$startPgButton.Text = "Start pgAdmin"
+$startPgButton.Location = New-Object System.Drawing.Point(20, 385)
+$startPgButton.Size = New-Object System.Drawing.Size(215, 35)
+Style-Button $startPgButton ([System.Drawing.Color]::FromArgb(72, 187, 120))
+$form.Controls.Add($startPgButton)
+
+# Stop pgAdmin Button
+$stopPgButton = New-Object System.Windows.Forms.Button
+$stopPgButton.Text = "Stop pgAdmin"
+$stopPgButton.Location = New-Object System.Drawing.Point(240, 385)
+$stopPgButton.Size = New-Object System.Drawing.Size(225, 35)
+Style-Button $stopPgButton ([System.Drawing.Color]::FromArgb(220, 38, 38))
+$form.Controls.Add($stopPgButton)
+
+# Increase form size to fit new buttons
+$form.Size = New-Object System.Drawing.Size(500, 480)
+
 # Get script directory
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $scriptDir) { $scriptDir = Get-Location }
+$script:scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $script:scriptDir) { $script:scriptDir = Get-Location }
 
 # START Click Handler
 $startButton.Add_Click({
     Write-Log "Stopping existing processes..."
-    Stop-Port 3001
-    Stop-Port 8888
+    Stop-LaunchedProcesses
     Start-Sleep -Milliseconds 500
     
+    Start-PgAdmin
+
     Write-Log "Starting API server..."
-    $apiPath = Join-Path $scriptDir "winelab_api"
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$apiPath'; npm run start:dev" -WindowStyle Minimized
+    $apiPath = Join-Path $script:scriptDir "winelab_api"
+    $apiProc = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$apiPath'; npm run start:dev" -WindowStyle Minimized -PassThru
+    $script:apiProcessId = $apiProc.Id
     
     Start-Sleep -Seconds 2
     
     Write-Log "Starting Frontend server..."
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$scriptDir'; npm run dev" -WindowStyle Minimized
+    $frontendProc = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$script:scriptDir'; npm run dev" -WindowStyle Minimized -PassThru
+    $script:frontendProcessId = $frontendProc.Id
     
     Start-Sleep -Seconds 2
     Update-Status
@@ -206,12 +343,39 @@ $startButton.Add_Click({
 
 # STOP Click Handler
 $stopButton.Add_Click({
-    Write-Log "Stopping all servers..."
-    Stop-Port 3001
-    Stop-Port 8888
-    Start-Sleep -Milliseconds 500
+    try {
+        Write-Log "Stopping all servers..."
+        Stop-LaunchedProcesses
+        Start-Sleep -Milliseconds 500
+        Update-Status
+        Write-Log "All servers stopped."
+    } catch {
+        Write-Log "Error stopping: $_"
+    }
+})
+
+# RESTART Click Handler
+$restartButton.Add_Click({
+    Write-Log "Restarting all servers..."
+    Stop-LaunchedProcesses
+    Start-Sleep -Milliseconds 800
+
+    Start-PgAdmin
+    
+    Write-Log "Starting API server..."
+    $apiPath = Join-Path $script:scriptDir "winelab_api"
+    $apiProc = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$apiPath'; npm run start:dev" -WindowStyle Minimized -PassThru
+    $script:apiProcessId = $apiProc.Id
+    
+    Start-Sleep -Seconds 2
+    
+    Write-Log "Starting Frontend server..."
+    $frontendProc = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$script:scriptDir'; npm run dev" -WindowStyle Minimized -PassThru
+    $script:frontendProcessId = $frontendProc.Id
+    
+    Start-Sleep -Seconds 2
     Update-Status
-    Write-Log "All servers stopped."
+    Write-Log "All servers restarted!"
 })
 
 # OPEN Click Handler
@@ -219,6 +383,19 @@ $openButton.Add_Click({
     Start-Process "http://localhost:8888"
     Write-Log "Opened browser..."
 })
+
+# Start pgAdmin Click Handler
+$startPgButton.Add_Click({
+    Start-PgAdmin
+    Update-Status
+})
+
+# Stop pgAdmin Click Handler
+$stopPgButton.Add_Click({
+    Stop-PgAdmin
+    Update-Status
+})
+
 
 # Timer for status updates
 $timer = New-Object System.Windows.Forms.Timer

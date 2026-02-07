@@ -26,9 +26,9 @@ import {
 // Helper for status display
 const statusConfig: Record<StoreStatus, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
     OPEN: { label: "Открыт", variant: "success" },
-    CLOSED: { label: "Закрыт", variant: "destructive" },
+    CLOSED: { label: "Закрыт", variant: "secondary" },
     RECONSTRUCTION: { label: "Реконструкция", variant: "warning" },
-    TECHNICAL_ISSUES: { label: "Тех. проблемы", variant: "secondary" },
+    TECHNICAL_ISSUES: { label: "Тех. проблемы", variant: "destructive" },
 };
 
 const getStatusDisplay = (status?: StoreStatus, isActive?: boolean) => {
@@ -160,9 +160,9 @@ export default function StoresPage() {
                         title="Закрытые"
                         value={stats.closed.toString()}
                         icon={<Store className="h-5 w-5" />}
-                        status="danger"
+                        status="default"
                         onClick={() => setStatusFilter(statusFilter === 'CLOSED' ? 'ALL' : 'CLOSED')}
-                        className={cn("cursor-pointer transition-all hover:scale-[1.02]", statusFilter === 'CLOSED' && "ring-2 ring-red-500")}
+                        className={cn("cursor-pointer transition-all hover:scale-[1.02]", statusFilter === 'CLOSED' && "ring-2 ring-muted-foreground")}
                     />
                     <StatCard
                         title="На реконструкции"
@@ -176,9 +176,9 @@ export default function StoresPage() {
                         title="Тех. проблемы"
                         value={stats.issues.toString()}
                         icon={<AlertTriangle className="h-5 w-5" />}
-                        status="default"
+                        status="danger"
                         onClick={() => setStatusFilter(statusFilter === 'TECHNICAL_ISSUES' ? 'ALL' : 'TECHNICAL_ISSUES')}
-                        className={cn("cursor-pointer transition-all hover:scale-[1.02]", statusFilter === 'TECHNICAL_ISSUES' && "ring-2 ring-primary")}
+                        className={cn("cursor-pointer transition-all hover:scale-[1.02]", statusFilter === 'TECHNICAL_ISSUES' && "ring-2 ring-destructive")}
                     />
                 </div>
 
@@ -303,16 +303,17 @@ export default function StoresPage() {
                                         interactive
                                         className={cn(
                                             "h-full animate-fade-in relative overflow-hidden transition-all duration-300",
-                                            isError && "border-red-500/30 bg-red-500/5 shadow-sm hover:border-red-500",
-                                            isWarning && "border-amber-500/30 bg-amber-500/5 shadow-sm hover:border-amber-500"
+                                            // Warmer, softer colors for states
+                                            isError && "border-rose-500/30 bg-rose-500/[0.02] shadow-sm hover:border-rose-500/50",
+                                            isWarning && "border-orange-500/30 bg-orange-500/[0.02] shadow-sm hover:border-orange-500/50"
                                         )}
                                         style={{ animationDelay: `${index * 20}ms` }}
                                     >
-                                        {/* Status Strip */}
+                                        {/* Status Strip - Thinner and warmer */}
                                         {(isError || isWarning) && (
                                             <div className={cn(
-                                                "absolute left-0 top-0 bottom-0 w-0.5",
-                                                isError ? "bg-red-500" : "bg-amber-500"
+                                                "absolute left-0 top-0 bottom-0 w-[3px]",
+                                                isError ? "bg-rose-500/80" : "bg-orange-500/80"
                                             )} />
                                         )}
 
@@ -326,7 +327,7 @@ export default function StoresPage() {
                                                     <div className="flex gap-1 h-5 overflow-hidden">
                                                         <Badge variant="outline" className={cn(
                                                             "text-[9px] px-1 border-transparent font-medium",
-                                                            isError ? "bg-red-500/10 text-red-600" : "bg-amber-500/10 text-amber-600"
+                                                            isError ? "bg-rose-500/10 text-rose-600" : "bg-orange-500/10 text-orange-600"
                                                         )}>
                                                             <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
                                                             {completeness.missing.length}
@@ -337,12 +338,12 @@ export default function StoresPage() {
 
                                             <div className="mt-2 flex items-center gap-2">
                                                 <div className={cn(
-                                                    "shrink-0 rounded-lg flex items-center justify-center h-8 w-8",
-                                                    isError ? "bg-red-500/10" : isWarning ? "bg-amber-500/10" : "bg-primary/10"
+                                                    "shrink-0 rounded-lg flex items-center justify-center h-8 w-8 transition-colors",
+                                                    isError ? "bg-rose-500/10" : isWarning ? "bg-orange-500/10" : "bg-primary/10"
                                                 )}>
                                                     <Building2 className={cn(
                                                         "h-4 w-4",
-                                                        isError ? "text-red-500" : isWarning ? "text-amber-500" : "text-primary"
+                                                        isError ? "text-rose-500" : isWarning ? "text-orange-500" : "text-primary"
                                                     )} />
                                                 </div>
                                                 <CardTitle className="text-base font-bold tracking-tight truncate">

@@ -25,28 +25,17 @@ import {
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTSDMode } from "@/contexts/TSDModeContext";
-
-const mainNavigation = [
-    { name: "Дашборд", href: "/", icon: LayoutDashboard },
-    { name: "Каталог", href: "/catalog", icon: Package },
-    { name: "Серийники", href: "/assets", icon: Boxes },
-    { name: "Расходники", href: "/stock", icon: Warehouse },
-    { name: "Заявки", href: "/requests", icon: ClipboardList },
-    { name: "Отгрузки", href: "/shipments", icon: Truck },
-    { name: "Доставки", href: "/deliveries", icon: MapPin },
-    { name: "Магазины", href: "/stores", icon: Store },
-];
-
-const bottomNavigation = [
-    { name: "Аналитика", href: "/analytics", icon: BarChart3 },
-    { name: "Пользователи", href: "/users", icon: Users },
-    { name: "Уведомления", href: "/notifications", icon: Bell },
-    { name: "Настройки", href: "/settings", icon: Settings },
-];
+import { useDeliveries } from "@/lib/hooks";
 
 export function Sidebar() {
     const pathname = usePathname();
     const { logout, hasRole } = useAuth();
+    const { data: deliveries } = useDeliveries();
+
+    // Calculate active/unprocessed deliveries count
+    // Assuming 'CREATED' is considered "open" or "new" tasks for logistics
+    // Adjust status filter as needed based on specific business logic for "unprocessed"
+    const activeDeliveriesCount = deliveries?.filter(d => ['CREATED'].includes(d.status)).length || 0;
 
     // Initialize state from localStorage if available, otherwise default to false
     const [collapsed, setCollapsed] = useState(false);
@@ -85,26 +74,31 @@ export function Sidebar() {
         {
             title: "Основное", // Implicit group, no header needed if logical
             items: [
-                { name: "Дашборд", href: "/", icon: LayoutDashboard },
+                { name: "Главная", href: "/", icon: LayoutDashboard },
                 { name: "Магазины", href: "/stores", icon: Store },
             ]
         },
         {
             title: "Склад",
             items: [
-                { name: "Приемка", href: "/receiving", icon: ArrowDownToLine, roles: ['ADMIN', 'MANAGER', 'WAREHOUSE'] as const },
-                { name: "Каталог", href: "/catalog", icon: Package },
+                { name: "Перемещения", href: "/receiving", icon: ArrowDownToLine, roles: ['ADMIN', 'MANAGER', 'WAREHOUSE'] as const },
+                // Catalog integrated into Inventory (Serial Numbers)
                 { name: "Склады", href: "/warehouses", icon: Building2 },
-                { name: "Серийники", href: "/assets", icon: Boxes },
-                { name: "Расходники", href: "/stock", icon: Warehouse },
+                { name: "Инвентаризация", href: "/assets", icon: Boxes }, // Was "Серийники"
+                { name: "Остатки", href: "/stock", icon: Warehouse },     // Was "Расходники"
             ]
         },
         {
             title: "Логистика",
             items: [
-                { name: "Заявки", href: "/requests", icon: ClipboardList },
-                { name: "Отгрузки", href: "/shipments", icon: Truck },
-                { name: "Доставки", href: "/deliveries", icon: MapPin },
+                {
+                    name: "Заявки",
+                    href: "/requests",
+                    icon: ClipboardList,
+                    badge: activeDeliveriesCount > 0 ? activeDeliveriesCount : undefined
+                },
+                // Deliveries integrated into Requests
+                { name: "Отгрузка", href: "/shipments", icon: Truck },  // Was "Отгрузки"
             ]
         },
         {
@@ -189,17 +183,29 @@ export function Sidebar() {
                                                 <Link
                                                     href={item.href}
                                                     className={cn(
-                                                        "sidebar-item",
+                                                        "sidebar-item relative",
                                                         isActive && "sidebar-item-active",
                                                         collapsed && "justify-center px-2"
                                                     )}
                                                     title={collapsed ? item.name : undefined}
                                                 >
-                                                    <item.icon className={cn(
-                                                        "h-5 w-5 shrink-0 transition-colors",
-                                                        isActive ? "text-primary" : "text-muted-foreground"
-                                                    )} />
-                                                    {!collapsed && <span>{item.name}</span>}
+                                                    <div className="flex items-center gap-3">
+                                                        <item.icon className={cn(
+                                                            "h-5 w-5 shrink-0 transition-colors",
+                                                            isActive ? "text-primary" : "text-muted-foreground"
+                                                        )} />
+                                                        {!collapsed && <span>{item.name}</span>}
+                                                    </div>
+
+                                                    {/* Badge Counter */}
+                                                    {item.badge !== undefined && item.badge > 0 && (
+                                                        <div className={cn(
+                                                            "flex items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-sm ring-1 ring-background",
+                                                            collapsed ? "absolute -top-1 -right-1 h-5 w-5" : "ml-auto h-5 px-1.5 min-w-[20px]"
+                                                        )}>
+                                                            {item.badge}
+                                                        </div>
+                                                    )}
                                                 </Link>
                                             </li>
                                         );
@@ -212,12 +218,6 @@ export function Sidebar() {
 
             {/* Bottom Actions */}
             <div className="border-t border-border/40 py-4 px-3">
-                {/* Notifications - simplified, moved to System or can stay here if desired, removing from list above? 
-                     User asked for "fewer links", let's keep Notifications here as action or in header. 
-                     Mockup shows Bell in sidebar top usually or Header. It was in bottomNavigation.
-                     I removed it from "Система" group to reduce links, usually it's in Header.
-                     Sidebar has Settings/Logout. */}
-
                 <button
                     onClick={() => logout()}
                     className={cn(

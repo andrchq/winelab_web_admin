@@ -1,9 +1,10 @@
 
-import { Settings, Key, Shield, Bell, Globe, Save, CheckCircle2, Plug, ExternalLink } from "lucide-react";
+import { Settings, Key, Shield, Bell, Globe, Save, CheckCircle2, Plug, ExternalLink, ListTree } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 
 export default function SettingsPage() {
     return (
@@ -180,6 +181,35 @@ export default function SettingsPage() {
                                 <p className="text-sm text-muted-foreground">Когда остаток ниже минимума</p>
                             </div>
                             <Badge variant="success" dot>Включено</Badge>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Equipment */}
+                <Card variant="elevated">
+                    <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2">
+                            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                <Settings className="h-4 w-4 text-primary" />
+                            </div>
+                            Оборудование
+                        </CardTitle>
+                        <CardDescription>Справочники и параметры оборудования</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors">
+                            <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-full bg-background flex items-center justify-center border border-border">
+                                    <ListTree className="h-5 w-5 text-muted-foreground" />
+                                </div>
+                                <div>
+                                    <p className="font-medium">Категории оборудования</p>
+                                    <p className="text-sm text-muted-foreground">Управление типами устройств</p>
+                                </div>
+                            </div>
+                            <Link href="/settings/equipment-categories">
+                                <Button variant="outline">Настроить</Button>
+                            </Link>
                         </div>
                     </CardContent>
                 </Card>
