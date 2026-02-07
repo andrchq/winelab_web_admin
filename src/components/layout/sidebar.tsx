@@ -65,16 +65,16 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
     return (
         <aside
             className={cn(
-                "fixed left-0 top-0 z-40 h-screen transition-all duration-300 ease-in-out border-r border-border/40 bg-card/50 backdrop-blur-xl",
+                "fixed left-0 top-0 z-[60] h-screen transition-all duration-300 ease-in-out border-r border-border/40 bg-card/50 backdrop-blur-xl",
                 collapsed ? "w-20" : "w-72"
             )}
         >
             {/* Logo Section */}
             <div className={cn(
-                "flex h-20 items-center border-b border-border/40 transition-all",
-                collapsed ? "justify-center px-2" : "justify-between px-6"
+                "relative flex h-20 items-center border-b border-border/40 transition-all",
+                collapsed ? "justify-center" : "px-6"
             )}>
-                <Link href="/" className="flex items-center gap-3">
+                <Link href="/" className="flex items-center gap-3 overflow-hidden">
                     <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-violet-600 shadow-lg shadow-violet-500/30">
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -89,31 +89,28 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
                             <path d="M4 4l6 16 2.5-7 2.5 7 6-16" />
                         </svg>
                     </div>
-                    {!collapsed && (
-                        <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-purple-600">
-                            WineLab
-                        </span>
-                    )}
+
+                    <span className={cn(
+                        "text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-purple-600 whitespace-nowrap transition-all duration-300",
+                        collapsed ? "w-0 opacity-0 translate-x-10" : "w-auto opacity-100 translate-x-0"
+                    )}>
+                        WineLab
+                    </span>
                 </Link>
 
+                {/* Animated Square Toggle Button */}
                 <button
                     onClick={toggleCollapsed}
-                    className={cn(
-                        "p-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors",
-                        collapsed && "hidden" // Скрываем нативную кнопку внутри, если свернуто (бургер будет ниже?) 
-                    )}
+                    className="absolute -right-3 top-7 flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-sm transition-all duration-300 hover:bg-primary hover:text-white hover:border-primary hover:scale-110 active:scale-95 group z-50"
+                    title={collapsed ? "Развернуть меню" : "Свернуть меню"}
                 >
-                    <ChevronLeft className={cn("h-5 w-5 transition-transform", collapsed && "rotate-180")} />
+                    <div className={cn(
+                        "transition-transform duration-300 ease-out",
+                        collapsed ? "rotate-180" : "rotate-0"
+                    )}>
+                        <ChevronLeft className="h-4 w-4" />
+                    </div>
                 </button>
-
-                {collapsed && (
-                    <button
-                        onClick={toggleCollapsed}
-                        className="absolute -right-3 top-7 h-6 w-6 rounded-full bg-primary flex items-center justify-center text-white shadow-lg border border-border"
-                    >
-                        <Menu className="h-3 w-3" />
-                    </button>
-                )}
             </div>
 
             {/* Navigation */}
