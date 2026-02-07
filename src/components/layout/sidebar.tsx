@@ -126,11 +126,11 @@ export function Sidebar() {
         >
             {/* Logo Section */}
             <div className={cn(
-                "flex h-24 items-center gap-3 border-b border-border/40",
+                "flex h-20 items-center border-b border-border/40",
                 collapsed ? "justify-center px-2" : "justify-between px-4"
             )}>
-                <Link href="/" className="flex items-center gap-3 group">
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-purple-600 shadow-lg shadow-purple-500/25 transition-transform group-hover:scale-105">
+                <Link href="/" className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-violet-600 shadow-lg shadow-violet-500/20">
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 24 24"
@@ -145,7 +145,7 @@ export function Sidebar() {
                         </svg>
                     </div>
                     {!collapsed && (
-                        <span className="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-violet-600 to-purple-600 whitespace-nowrap">
+                        <span className="text-xl font-bold text-violet-500 whitespace-nowrap">
                             WineLab
                         </span>
                     )}
@@ -154,20 +154,9 @@ export function Sidebar() {
                 {!collapsed && (
                     <button
                         onClick={toggleCollapsed}
-                        className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
                     >
                         <ChevronLeft className="h-5 w-5" />
-                    </button>
-                )}
-                {collapsed && (
-                    <button
-                        onClick={toggleCollapsed}
-                        className={cn(
-                            "flex h-12 w-12 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 border border-border/50",
-                            collapsed && "mx-auto"
-                        )}
-                    >
-                        <Menu className="h-6 w-6" />
                     </button>
                 )}
             </div>
