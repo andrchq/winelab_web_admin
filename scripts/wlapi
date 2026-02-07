@@ -75,7 +75,7 @@ case "$1" in
         
         # Check if migration needed
         echo -e "${BLUE}  → Checking migrations...${NC}"
-        npx prisma migrate deploy 2>/dev/null || npx prisma migrate dev --name init
+        npx prisma migrate deploy
         
         # Build
         echo -e "${BLUE}  → Building API...${NC}"

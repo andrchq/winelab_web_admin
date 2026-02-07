@@ -135,7 +135,7 @@ case "$1" in
         fi
         
         npx prisma generate
-        npx prisma migrate deploy 2>/dev/null || echo -e "${YELLOW}  → No pending migrations${NC}"
+        npx prisma migrate deploy
         
         # Build API
         echo -e "${BLUE}  → Building API...${NC}"

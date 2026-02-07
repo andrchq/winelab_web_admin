@@ -1,3 +1,4 @@
+
 import { PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
@@ -5,6 +6,39 @@ const prisma = new PrismaClient();
 
 async function main() {
     console.log('🌱 Seeding database...');
+
+    // 1. Create Categories first
+    console.log('📦 Seeding categories...');
+    const mandatoryCategories = [
+        { name: 'POS-терминал', code: 'POS_TERMINAL', isMandatory: true },
+        { name: 'Сканер ШК', code: 'BARCODE_SCANNER', isMandatory: true },
+        { name: 'Монитор', code: 'MONITOR', isMandatory: true },
+        { name: 'Системный блок', code: 'SYSTEM_UNIT', isMandatory: true },
+        { name: 'Принтер', code: 'PRINTER', isMandatory: true },
+        { name: 'МФУ', code: 'MFU', isMandatory: true },
+        { name: 'ИБП', code: 'UPS', isMandatory: true },
+        { name: 'Клавиатура', code: 'KEYBOARD', isMandatory: true },
+        { name: 'Мышь', code: 'MOUSE', isMandatory: true },
+        { name: 'ТСД', code: 'TSD', isMandatory: false },
+        { name: 'Весы', code: 'SCALES', isMandatory: true },
+        { name: 'Денежный ящик', code: 'CASH_DRAWER', isMandatory: true },
+        { name: 'Дисплей покупателя', code: 'CUSTOMER_DISPLAY', isMandatory: true },
+        // Add categories used in product seed
+        { name: 'Сетевое оборудование', code: 'NETWORK_EQUIPMENT', isMandatory: false },
+        { name: 'Кассовое оборудование', code: 'CASH_EQUIPMENT', isMandatory: false },
+        { name: 'Периферия', code: 'PERIPHERALS', isMandatory: false },
+        { name: 'Видеонаблюдение', code: 'CCTV', isMandatory: false },
+    ];
+
+    for (const cat of mandatoryCategories) {
+        await prisma.equipmentCategory.upsert({
+            where: { code: cat.code },
+            update: {},
+            create: cat,
+        });
+    }
+    console.log('✅ Categories seeded');
+
 
     // Create admin user
     const adminPassword = await bcrypt.hash('admin123', 10);
@@ -93,28 +127,33 @@ async function main() {
 
     // Create products
     const products = [
-        { name: 'Роутер X500', sku: 'RTR-X500', category: 'Сетевое оборудование' },
-        { name: 'POS-терминал Pro', sku: 'POS-PRO', category: 'Кассовое оборудование' },
-        { name: 'Сканер штрих-кодов', sku: 'SCN-200', category: 'Периферия' },
-        { name: 'IP-камера 4MP', sku: 'CAM-4MP', category: 'Видеонаблюдение' },
-        { name: 'Принтер чеков', sku: 'PRT-CHK', category: 'Кассовое оборудование' },
+        { name: 'Роутер X500', sku: 'RTR-X500', categoryCode: 'NETWORK_EQUIPMENT' }, // Was 'Сетевое оборудование'
+        { name: 'POS-терминал Pro', sku: 'POS-PRO', categoryCode: 'POS_TERMINAL' },   // Was 'Кассовое оборудование'
+        { name: 'Сканер штрих-кодов', sku: 'SCN-200', categoryCode: 'BARCODE_SCANNER' }, // Was 'Периферия'
+        { name: 'IP-камера 4MP', sku: 'CAM-4MP', categoryCode: 'CCTV' },
+        { name: 'Принтер чеков', sku: 'PRT-CHK', categoryCode: 'PRINTER' },
     ];
 
     for (const product of products) {
+        // Find category by code
+        const category = await prisma.equipmentCategory.findUnique({
+            where: { code: product.categoryCode }
+        });
+
+        if (!category) {
+            console.warn(`⚠️ Category not found for product ${product.name}: ${product.categoryCode}`);
+            continue;
+        }
+
         await prisma.product.upsert({
             where: { sku: product.sku },
-            update: {},
+            update: {
+                categoryId: category.id
+            },
             create: {
                 name: product.name,
                 sku: product.sku,
-                category: {
-                    connect: {
-                        code: (product as any).category === 'Видеонаблюдение' ? 'CCTV' :
-                            (product as any).category === 'Сетевое оборудование' ? 'ROUTER' : // Simplified mapping for seed
-                                (product as any).category === 'Кассовое оборудование' ? 'CASH_REGISTER' :
-                                    (product as any).category === 'Периферия' ? 'SCANNER' : 'ACCESSORY'
-                    }
-                }
+                categoryId: category.id
             },
         });
     }
@@ -128,11 +167,24 @@ async function main() {
     ];
 
     for (const store of stores) {
+        const storeId = store.name.toLowerCase().replace(/\s/g, '-').replace(/[а-яё]/g, (match) => {
+            // Simple transliteration for ID safe-ness if needed, or just keep as is if DB supports UTF8 IDs
+            // But existing code used cyrillic name as base for ID.
+            return match;
+        });
+
+        // Better store ID generation for URLs
+        const safeId = store.name
+            .toLowerCase()
+            .replace(/тц |трк /g, '')
+            .trim()
+            .replace(/\s/g, '-');
+
         await prisma.store.upsert({
-            where: { id: store.name.toLowerCase().replace(/\s/g, '-') },
+            where: { id: safeId },
             update: {},
             create: {
-                id: store.name.toLowerCase().replace(/\s/g, '-'),
+                id: safeId,
                 ...store,
                 phone: '+7 (495) 123-45-67',
                 email: `store@winelab.ru`,
