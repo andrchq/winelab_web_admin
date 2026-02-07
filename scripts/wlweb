@@ -3,7 +3,9 @@
 # Usage: wlweb [start|stop|restart|rebuild|logs|status|update]
 
 PROJECT_DIR="/home/prsta/winelab_web_admin"
-SERVICE_NAME="winelab-web"
+SERVICE_NAME="wlweb"
+API_SERVICE_NAME="winelab-api"
+API_DIR="$PROJECT_DIR/winelab_api"
 
 # Colors
 GREEN='\033[0;32m'
@@ -13,6 +15,21 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 cd "$PROJECT_DIR" || { echo -e "${RED}❌ Directory not found: $PROJECT_DIR${NC}"; exit 1; }
+
+start_api() {
+    echo -e "${BLUE}  → Starting API...${NC}"
+    cd "$API_DIR"
+    
+    # Build if dist doesn't exist
+    if [ ! -f "dist/src/main.js" ]; then
+        echo -e "${YELLOW}  → Building API (first time)...${NC}"
+        npm run build
+    fi
+    
+    # Start with node directly (not nest)
+    pm2 start dist/src/main.js --name "$API_SERVICE_NAME" 2>/dev/null || pm2 restart "$API_SERVICE_NAME"
+    cd "$PROJECT_DIR"
+}
 
 case "$1" in
     start)
@@ -43,10 +60,10 @@ case "$1" in
         # Check if clean rebuild needed
         if [ "$2" == "--clean" ] || [ ! -d "node_modules" ]; then
             echo -e "${BLUE}  → Cleaning old files...${NC}"
-            rm -rf node_modules .next
+            rm -rf node_modules .next package-lock.json
             
             echo -e "${BLUE}  → Installing dependencies...${NC}"
-            npm install
+            npm install --legacy-peer-deps
         else
             # Always clean .next for rebuild
             echo -e "${BLUE}  → Cleaning previous build...${NC}"
@@ -66,9 +83,9 @@ case "$1" in
         echo -e "${BLUE}  → Starting web server...${NC}"
         pm2 start npm --name "$SERVICE_NAME" -- run start
         
-        # Also restart API to ensure consistency
+        # Also restart API
         echo -e "${BLUE}  → Restarting API...${NC}"
-        pm2 restart winelab-api 2>/dev/null || echo -e "${YELLOW}⚠ API not running, skipped${NC}"
+        pm2 restart "$API_SERVICE_NAME" 2>/dev/null || start_api
         
         pm2 save
         
@@ -83,21 +100,29 @@ case "$1" in
         OLD_API_HASH=$(md5sum winelab_api/package.json 2>/dev/null | cut -d' ' -f1)
         
         echo -e "${BLUE}  → Pulling latest changes...${NC}"
-        git reset --hard
-        git pull
+        git fetch origin
+        git reset --hard origin/main
+        
+        # Fix line endings
+        find scripts -type f -exec sed -i 's/\r$//' {} \; 2>/dev/null || true
         
         # Check if web package.json changed or node_modules missing
         NEW_WEB_HASH=$(md5sum package.json 2>/dev/null | cut -d' ' -f1)
         if [ "$OLD_WEB_HASH" != "$NEW_WEB_HASH" ] || [ ! -d "node_modules" ]; then
             echo -e "${YELLOW}  → Web dependencies changed or missing, installing...${NC}"
-            npm install
+            rm -rf node_modules package-lock.json
+            npm install --legacy-peer-deps
         fi
         
         # Check if API package.json changed or node_modules missing
         NEW_API_HASH=$(md5sum winelab_api/package.json 2>/dev/null | cut -d' ' -f1)
         if [ "$OLD_API_HASH" != "$NEW_API_HASH" ] || [ ! -d "winelab_api/node_modules" ]; then
             echo -e "${YELLOW}  → API dependencies changed or missing, installing...${NC}"
-            cd winelab_api && npm install && cd ..
+            cd winelab_api
+            rm -rf node_modules package-lock.json
+            npm install
+            chmod +x node_modules/.bin/* 2>/dev/null || true
+            cd ..
         fi
         
         # Update API (generates Prisma, runs migrations)
@@ -109,15 +134,18 @@ case "$1" in
             export $(grep -v '^#' .env | xargs)
         fi
         
-        chmod +x install.sh 2>/dev/null || true
+        npx prisma generate
+        npx prisma migrate deploy 2>/dev/null || echo -e "${YELLOW}  → No pending migrations${NC}"
         
-        npx prisma@5.22.0 generate
-        npx prisma@5.22.0 migrate deploy
+        # Build API
+        echo -e "${BLUE}  → Building API...${NC}"
+        npm run build
+        
         cd ..
         
         # Rebuild web
-        echo -e "${BLUE}  → Setting permissions for Next.js...${NC}"
-        chmod +x node_modules/.bin/next 2>/dev/null || true
+        echo -e "${BLUE}  → Setting permissions...${NC}"
+        chmod +x node_modules/.bin/* 2>/dev/null || true
         
         echo -e "${BLUE}  → Cleaning build cache...${NC}"
         rm -rf .next
@@ -129,7 +157,7 @@ case "$1" in
         if [ $? -ne 0 ]; then
             echo -e "${YELLOW}  → Build failed, trying with clean node_modules...${NC}"
             rm -rf node_modules package-lock.json
-            npm install
+            npm install --legacy-peer-deps
             npm run build
         fi
         
@@ -138,14 +166,25 @@ case "$1" in
             exit 1
         fi
         
-        # Restart services (Start if not existing)
+        # Restart/Start services
         echo -e "${BLUE}  → Starting/Restarting services...${NC}"
-        pm2 restart "$SERVICE_NAME" 2>/dev/null || pm2 start npm --name "$SERVICE_NAME" -- run start
-        pm2 restart winelab-api 2>/dev/null || pm2 start npm --name "winelab-api" --cwd "$(pwd)/winelab_api" -- run start:dev
+        
+        # Web
+        pm2 delete "$SERVICE_NAME" 2>/dev/null
+        pm2 start npm --name "$SERVICE_NAME" -- run start
+        
+        # API - use node directly, not npm
+        pm2 delete "$API_SERVICE_NAME" 2>/dev/null
+        cd winelab_api
+        pm2 start dist/src/main.js --name "$API_SERVICE_NAME"
+        cd ..
+        
+        pm2 save
         
         echo -e "${GREEN}✅ WineLab updated successfully!${NC}"
         echo -e "${BLUE}   Web: http://YOUR_SERVER_IP:8888${NC}"
         echo -e "${BLUE}   API: http://YOUR_SERVER_IP:3001${NC}"
+        pm2 list
         ;;
     
     dev)
@@ -159,16 +198,20 @@ case "$1" in
         ;;
     
     status)
-        echo -e "${BLUE}📊 WineLab Web Status${NC}"
+        echo -e "${BLUE}📊 WineLab Status${NC}"
         echo ""
-        echo -e "${YELLOW}PM2:${NC}"
-        pm2 status "$SERVICE_NAME"
+        pm2 list
         echo ""
-        echo -e "${YELLOW}Build:${NC}"
+        echo -e "${YELLOW}Build info:${NC}"
         if [ -d ".next" ]; then
-            echo "  .next exists: $(du -sh .next | cut -f1)"
+            echo "  Web (.next): $(du -sh .next | cut -f1)"
         else
-            echo "  .next: NOT BUILT"
+            echo "  Web: NOT BUILT"
+        fi
+        if [ -d "winelab_api/dist" ]; then
+            echo "  API (dist): $(du -sh winelab_api/dist | cut -f1)"
+        else
+            echo "  API: NOT BUILT"
         fi
         ;;
     
@@ -182,11 +225,11 @@ case "$1" in
         echo "  stop        Stop web server"
         echo "  restart     Restart web server"
         echo "  rebuild     Rebuild and restart (use --clean for full cleanup)"
-        echo "  update      Git pull, rebuild, and restart"
+        echo "  update      Git pull, rebuild, and restart all"
         echo "  dev         Start in development mode"
         echo "  logs        Show web logs"
         echo "  status      Show service status"
         echo ""
-        echo "Note: rebuild also restarts API for consistency"
+        echo "Note: update also rebuilds and restarts API"
         ;;
 esac

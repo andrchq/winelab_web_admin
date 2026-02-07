@@ -14,11 +14,24 @@ NC='\033[0m'
 
 cd "$PROJECT_DIR" || { echo -e "${RED}❌ Directory not found: $PROJECT_DIR${NC}"; exit 1; }
 
+# Function to start API properly
+start_api() {
+    # Build if needed
+    if [ ! -f "dist/src/main.js" ]; then
+        echo -e "${BLUE}  → Building API...${NC}"
+        npm run build
+    fi
+    
+    # Start with node directly (not nest CLI)
+    pm2 start dist/src/main.js --name "$SERVICE_NAME" 2>/dev/null || pm2 restart "$SERVICE_NAME"
+}
+
 case "$1" in
     start)
         echo -e "${GREEN}▶ Starting WineLab API...${NC}"
         docker compose up -d
-        pm2 start npm --name "$SERVICE_NAME" -- run start:dev 2>/dev/null || pm2 restart "$SERVICE_NAME"
+        start_api
+        pm2 save
         echo -e "${GREEN}✅ API started on http://localhost:3001${NC}"
         ;;
     
@@ -44,12 +57,13 @@ case "$1" in
         # Check if clean rebuild needed
         if [ "$2" == "--clean" ] || [ ! -d "node_modules" ]; then
             echo -e "${BLUE}  → Cleaning old files...${NC}"
-            rm -rf node_modules dist
+            rm -rf node_modules dist package-lock.json
             docker compose down -v
             docker system prune -f --volumes 2>/dev/null
             
             echo -e "${BLUE}  → Installing dependencies...${NC}"
             npm install
+            chmod +x node_modules/.bin/* 2>/dev/null || true
         fi
         
         echo -e "${BLUE}  → Starting database...${NC}"
@@ -63,49 +77,63 @@ case "$1" in
         echo -e "${BLUE}  → Checking migrations...${NC}"
         npx prisma migrate deploy 2>/dev/null || npx prisma migrate dev --name init
         
+        # Build
+        echo -e "${BLUE}  → Building API...${NC}"
+        npm run build
+        
         # Start
         echo -e "${BLUE}  → Starting API...${NC}"
-        pm2 start npm --name "$SERVICE_NAME" -- run start:dev
+        pm2 start dist/src/main.js --name "$SERVICE_NAME"
         pm2 save
         
         echo -e "${GREEN}✅ API rebuilt and started on http://localhost:3001${NC}"
         ;;
     
     update)
-        echo -e "${BLUE}🔄 Updating WineLab API from GitHub...${NC}"
+        echo -e "${BLUE}🔄 Updating WineLab API...${NC}"
+        
+        # Load environment variables
+        if [ -f ".env" ]; then
+            export $(grep -v '^#' .env | xargs)
+        fi
         
         # Save package.json hash before pull
         OLD_HASH=$(md5sum package.json 2>/dev/null | cut -d' ' -f1)
         
         echo -e "${BLUE}  → Pulling latest changes...${NC}"
-        git reset --hard
-        git pull
+        cd ..
+        git fetch origin
+        git reset --hard origin/main
+        cd winelab_api
         
-        # Load environment variables for the current session if file exists
-        if [ -f ".env" ]; then
-            export $(grep -v '^#' .env | xargs)
-        fi
+        # Fix line endings
+        sed -i 's/\r$//' ../scripts/* 2>/dev/null || true
         
         # Check if package.json changed or node_modules missing
         NEW_HASH=$(md5sum package.json 2>/dev/null | cut -d' ' -f1)
         if [ "$OLD_HASH" != "$NEW_HASH" ] || [ ! -d "node_modules" ]; then
             echo -e "${YELLOW}  → Dependencies changed or missing, installing...${NC}"
+            rm -rf node_modules package-lock.json
             npm install
+            chmod +x node_modules/.bin/* 2>/dev/null || true
         fi
         
-        # Fix permissions for binaries
-        echo -e "${BLUE}  → Setting permissions...${NC}"
-        chmod +x install.sh 2>/dev/null || true
-        
         echo -e "${BLUE}  → Generating Prisma client...${NC}"
-        npx prisma@5.22.0 generate
+        npx prisma generate
         
         echo -e "${BLUE}  → Applying database migrations...${NC}"
-        npx prisma@5.22.0 migrate deploy
+        npx prisma migrate deploy 2>/dev/null || echo -e "${YELLOW}  → No pending migrations${NC}"
         
-        # Restart or Start service
+        # Delete dist and rebuild
+        echo -e "${BLUE}  → Rebuilding API...${NC}"
+        rm -rf dist
+        npm run build
+        
+        # Restart service - use node directly
         echo -e "${BLUE}  → Restarting API...${NC}"
-        pm2 restart "$SERVICE_NAME" 2>/dev/null || pm2 start npm --name "$SERVICE_NAME" -- run start:dev
+        pm2 delete "$SERVICE_NAME" 2>/dev/null
+        pm2 start dist/src/main.js --name "$SERVICE_NAME"
+        pm2 save
         
         echo -e "${GREEN}✅ API updated successfully${NC}"
         ;;
@@ -122,6 +150,13 @@ case "$1" in
         echo ""
         echo -e "${YELLOW}Docker:${NC}"
         docker compose ps
+        echo ""
+        echo -e "${YELLOW}Build:${NC}"
+        if [ -f "dist/src/main.js" ]; then
+            echo "  dist/src/main.js: EXISTS"
+        else
+            echo "  dist/src/main.js: NOT BUILT"
+        fi
         ;;
     
     db)
@@ -157,9 +192,9 @@ case "$1" in
         echo "Commands:"
         echo "  start       Start API and database"
         echo "  stop        Stop API"
-        echo "  restart     Restart API (hot reload)"
+        echo "  restart     Restart API"
         echo "  rebuild     Rebuild API (use --clean for full cleanup)"
-        echo "  update      Git pull and restart"
+        echo "  update      Git pull, rebuild, and restart"
         echo "  logs        Show API logs"
         echo "  status      Show service status"
         echo ""
