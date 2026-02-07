@@ -51,11 +51,22 @@ export default function LoginPage() {
                 <div className="bg-card/80 backdrop-blur-xl border border-border/50 rounded-3xl p-10 shadow-2xl">
                     {/* Logo - Medium-Large */}
                     <div className="flex flex-col items-center justify-center gap-5 mb-8">
-                        <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center shadow-lg shadow-primary/25">
-                            <Warehouse className="w-8 h-8 text-white" />
+                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/25">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="w-8 h-8 text-white"
+                            >
+                                <path d="M4 4l6 16 2.5-7 2.5 7 6-16" />
+                            </svg>
                         </div>
                         <div className="text-center">
-                            <h1 className="text-3xl font-bold text-gradient mb-1">WineLab</h1>
+                            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-violet-600 to-purple-600 mb-1">WineLab</h1>
                             <p className="text-base text-muted-foreground">Admin Panel</p>
                         </div>
                     </div>

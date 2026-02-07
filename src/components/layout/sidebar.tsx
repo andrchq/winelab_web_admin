@@ -131,10 +131,21 @@ export function Sidebar() {
             )}>
                 {!collapsed && (
                     <Link href="/" className="flex items-center gap-3 group">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl gradient-primary shadow-lg shadow-primary/25 transition-transform group-hover:scale-105">
-                            <Warehouse className="h-6 w-6 text-white" />
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-purple-600 shadow-lg shadow-purple-500/25 transition-transform group-hover:scale-105">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="h-6 w-6 text-white"
+                            >
+                                <path d="M4 4l6 16 2.5-7 2.5 7 6-16" />
+                            </svg>
                         </div>
-                        <span className="text-xl font-extrabold text-gradient">WineLab</span>
+                        <span className="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-violet-600 to-purple-600">WineLab</span>
                     </Link>
                 )}
                 <button
