@@ -57,6 +57,7 @@ export class ReceivingService {
                 items: {
                     include: {
                         product: { select: { id: true, name: true, sku: true } },
+                        scans: { orderBy: { timestamp: 'desc' } },
                     },
                 },
             },
@@ -70,13 +71,14 @@ export class ReceivingService {
     }
 
     // Create new session
-    async create(data: CreateSessionDto, userId: string) {
+    async create(data: CreateSessionDto & { type?: string }, userId: string) {
         const session = await this.prisma.receivingSession.create({
             data: {
                 warehouseId: data.warehouseId,
                 invoiceNumber: data.invoiceNumber,
                 supplier: data.supplier,
                 createdById: userId,
+                type: data.type || 'manual',
                 items: {
                     create: data.items.map(item => ({
                         name: item.name,
@@ -100,8 +102,8 @@ export class ReceivingService {
         return session;
     }
 
-    // Update item scanned quantity
-    async updateItem(sessionId: string, itemId: string, data: UpdateItemDto) {
+    // Update item scanned quantity (add scan)
+    async updateItem(sessionId: string, itemId: string, data: UpdateItemDto & { isManual?: boolean; code?: string }) {
         // Check session exists
         const session = await this.prisma.receivingSession.findUnique({
             where: { id: sessionId },
@@ -111,11 +113,30 @@ export class ReceivingService {
             throw new NotFoundException('Сессия приемки не найдена');
         }
 
-        // Update item
-        const item = await this.prisma.receivingItem.update({
+        // Create scan record
+        await this.prisma.receivingScan.create({
+            data: {
+                receivingItemId: itemId,
+                quantity: data.scannedQuantity, // This is actually delta in our logic
+                isManual: data.isManual || false,
+                code: data.code,
+            },
+        });
+
+        // Update item total
+        const item = await this.prisma.receivingItem.findUnique({
+            where: { id: itemId },
+            include: { scans: true },
+        });
+
+        if (!item) throw new NotFoundException('Товар не найден');
+
+        const totalScanned = item.scans.reduce((acc, scan) => acc + scan.quantity, 0);
+
+        await this.prisma.receivingItem.update({
             where: { id: itemId },
             data: {
-                scannedQuantity: data.scannedQuantity,
+                scannedQuantity: totalScanned,
             },
         });
 
@@ -133,7 +154,46 @@ export class ReceivingService {
         // Emit WebSocket event
         this.eventsGateway.server.emit('receiving_update', updatedSession);
 
-        return item;
+        return updatedSession;
+    }
+
+    // Remove scan
+    async removeScan(sessionId: string, itemId: string, scanId: string) {
+        // Verify scan belongs to item
+        const scan = await this.prisma.receivingScan.findUnique({
+            where: { id: scanId },
+        });
+
+        if (!scan || scan.receivingItemId !== itemId) {
+            throw new NotFoundException('Запись сканирования не найдена');
+        }
+
+        // Delete scan
+        await this.prisma.receivingScan.delete({
+            where: { id: scanId },
+        });
+
+        // Calculate new total
+        const item = await this.prisma.receivingItem.findUnique({
+            where: { id: itemId },
+            include: { scans: true },
+        });
+
+        if (item) {
+            const totalScanned = item.scans.reduce((acc, s) => acc + s.quantity, 0);
+            await this.prisma.receivingItem.update({
+                where: { id: itemId },
+                data: { scannedQuantity: totalScanned },
+            });
+        }
+
+        // Fetch updated session
+        const updatedSession = await this.findOne(sessionId);
+
+        // Emit WebSocket event
+        this.eventsGateway.server.emit('receiving_update', updatedSession);
+
+        return updatedSession;
     }
 
     // Complete session (commit to stock)
@@ -154,12 +214,79 @@ export class ReceivingService {
         // Use transaction to ensure all stock updates happen or none
         return this.prisma.$transaction(async (tx) => {
             const results = [];
+            let createdAssetsCount = 0;
+            let updatedAssetsCount = 0;
 
             for (const item of session.items) {
                 if (!item.productId || item.scannedQuantity === 0) continue;
 
-                // Check if stock item exists
-                const existing = await tx.stockItem.findUnique({
+                // 1. Process Scans to create/update Assets (Serialized Tracking)
+                // We need to fetch scans for this item because session.items might not have them included in the top-level findUnique if not explicitly requested, 
+                // but wait, the findUnique above INCLUDES items, but NOT scans inside items.
+                // We need to fetch scans given the item structure in findAll/findOne usually includes them, but here we just did include: { items: true }.
+                // Let's fetch scans for this item.
+                const itemWithScans = await tx.receivingItem.findUnique({
+                    where: { id: item.id },
+                    include: { scans: true }
+                });
+
+                if (itemWithScans && itemWithScans.scans.length > 0) {
+                    for (const scan of itemWithScans.scans) {
+                        if (scan.code) {
+                            // This scan has a Serial Number / Barcode
+                            const existingAsset = await tx.asset.findUnique({
+                                where: { serialNumber: scan.code }
+                            });
+
+                            if (existingAsset) {
+                                // Asset exists -> Update its location to this warehouse
+                                await tx.asset.update({
+                                    where: { id: existingAsset.id },
+                                    data: {
+                                        warehouseId: session.warehouseId,
+                                        storeId: null, // Moved to warehouse, so not in store
+                                        processStatus: 'AVAILABLE', // Available in warehouse
+                                        updatedAt: new Date(),
+                                    }
+                                });
+                                // Add history record
+                                await tx.assetHistory.create({
+                                    data: {
+                                        assetId: existingAsset.id,
+                                        action: 'RECEIVED_EXISTING',
+                                        location: `Warehouse: ${session.warehouseId}`,
+                                        userId: session.createdById,
+                                    }
+                                });
+                                updatedAssetsCount++;
+                            } else {
+                                // New Asset -> Create it
+                                const newAsset = await tx.asset.create({
+                                    data: {
+                                        serialNumber: scan.code,
+                                        productId: item.productId,
+                                        warehouseId: session.warehouseId,
+                                        condition: 'WORKING',
+                                        processStatus: 'AVAILABLE',
+                                    }
+                                });
+                                // Add history record
+                                await tx.assetHistory.create({
+                                    data: {
+                                        assetId: newAsset.id,
+                                        action: 'RECEIVED_NEW',
+                                        location: `Warehouse: ${session.warehouseId}`,
+                                        userId: session.createdById,
+                                    }
+                                });
+                                createdAssetsCount++;
+                            }
+                        }
+                    }
+                }
+
+                // 2. Update StockItem (Aggregate Quantity Tracking)
+                const existingStock = await tx.stockItem.findUnique({
                     where: {
                         productId_warehouseId: {
                             productId: item.productId,
@@ -168,9 +295,9 @@ export class ReceivingService {
                     },
                 });
 
-                if (existing) {
+                if (existingStock) {
                     const updated = await tx.stockItem.update({
-                        where: { id: existing.id },
+                        where: { id: existingStock.id },
                         data: {
                             quantity: { increment: item.scannedQuantity },
                         },
@@ -209,7 +336,9 @@ export class ReceivingService {
             return {
                 success: true,
                 session: completedSession,
-                updatedCount: results.length,
+                updatedStockCount: results.length,
+                createdAssetsCount,
+                updatedAssetsCount
             };
         });
     }

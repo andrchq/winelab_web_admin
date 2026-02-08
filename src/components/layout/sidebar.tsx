@@ -82,6 +82,7 @@ export function Sidebar() {
             title: "Склад",
             items: [
                 { name: "Перемещения", href: "/receiving", icon: ArrowDownToLine, roles: ['ADMIN', 'MANAGER', 'WAREHOUSE'] as const },
+                { name: "Отгрузка", href: "/shipments", icon: Truck },
                 // Catalog integrated into Inventory (Serial Numbers)
                 { name: "Склады", href: "/warehouses", icon: Building2 },
                 { name: "Инвентаризация", href: "/assets", icon: Boxes }, // Was "Серийники"
@@ -98,7 +99,7 @@ export function Sidebar() {
                     badge: activeDeliveriesCount > 0 ? activeDeliveriesCount : undefined
                 },
                 // Deliveries integrated into Requests
-                { name: "Отгрузка", href: "/shipments", icon: Truck },  // Was "Отгрузки"
+
             ]
         },
         {
@@ -111,7 +112,7 @@ export function Sidebar() {
         }
     ];
 
-    const { isTSDMode } = useTSDMode();
+    const { isTSDMode, isExitingTSD } = useTSDMode();
 
     if (isTSDMode) return null;
 
@@ -120,8 +121,8 @@ export function Sidebar() {
             className={cn(
                 "flex h-screen flex-col bg-card border-r border-border/40 transition-all duration-300 ease-in-out",
                 collapsed ? "w-[72px]" : "w-64",
-                // Prevent transition on initial mount to avoid animation
-                !isMounted && "transition-none"
+                // Prevent transition on initial mount OR when exiting TSD mode to avoid animation
+                (!isMounted || isExitingTSD) && "transition-none"
             )}
         >
             {/* Logo Section */}
@@ -194,7 +195,7 @@ export function Sidebar() {
                                                 <Link
                                                     href={item.href}
                                                     className={cn(
-                                                        "sidebar-item relative",
+                                                        "sidebar-item relative border border-border/30 rounded-lg",
                                                         isActive && "sidebar-item-active",
                                                         collapsed && "justify-center px-2"
                                                     )}

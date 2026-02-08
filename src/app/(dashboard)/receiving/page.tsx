@@ -23,15 +23,18 @@ export default function ReceivingPage() {
     const [searchTerm, setSearchTerm] = useState("");
 
     useEffect(() => {
-        try {
-            const data = receivingService.getAll();
-            setSessions(data);
-        } catch (err) {
-            setError("Failed to load local sessions");
-            console.error(err);
-        } finally {
-            setIsLoading(false);
-        }
+        const loadSessions = async () => {
+            try {
+                const data = await receivingService.getAll();
+                setSessions(data);
+            } catch (err) {
+                setError("Failed to load sessions");
+                console.error(err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadSessions();
     }, []);
     const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'in_progress' | 'completed'>('all');
     const [warehouseFilter, setWarehouseFilter] = useState<string>('all');
@@ -39,12 +42,12 @@ export default function ReceivingPage() {
     const [problemsOnly, setProblemsOnly] = useState(false);
     const { data: warehouses } = useWarehouses();
 
-    const getWarehouseName = (id: string) => {
-        return warehouses?.find(w => w.id === id)?.name || id;
+    const getWarehouseName = (session: ReceivingSession) => {
+        return session.warehouse?.name || warehouses?.find(w => w.id === session.warehouseId)?.name || session.warehouseId;
     };
 
     const getStatusColor = (status: string) => {
-        switch (status) {
+        switch (status.toLowerCase()) {
             case 'draft': return "secondary";
             case 'in_progress': return "default";
             case 'completed': return "success";
@@ -53,7 +56,7 @@ export default function ReceivingPage() {
     };
 
     const getStatusText = (status: string) => {
-        switch (status) {
+        switch (status.toLowerCase()) {
             case 'draft': return "Черновик";
             case 'in_progress': return "В процессе";
             case 'completed': return "Завершено";
@@ -62,7 +65,7 @@ export default function ReceivingPage() {
     };
 
     const filteredSessions = (sessions || []).filter(session => {
-        const warehouseName = getWarehouseName(session.warehouseId);
+        const warehouseName = getWarehouseName(session);
         const matchesSearch =
             warehouseName.toLowerCase().includes(searchTerm.toLowerCase()) ||
             session.warehouseId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -78,7 +81,7 @@ export default function ReceivingPage() {
             (typeFilter === 'manual' && isManual) ||
             (typeFilter === 'file' && !isManual);
 
-        const hasProblems = session.items.some(item => item.scannedQuantity > item.quantity);
+        const hasProblems = session.items.some(item => item.scannedQuantity > item.expectedQuantity);
         const matchesProblems = !problemsOnly || hasProblems;
 
         return matchesSearch && matchesStatus && matchesWarehouse && matchesProblems && matchesType;
@@ -111,7 +114,7 @@ export default function ReceivingPage() {
 
     return (
         <div className="p-3 md:p-6 min-h-full bg-muted/5">
-            <div className="max-w-7xl mx-auto space-y-4 md:space-y-6">
+            <div className="space-y-4 md:space-y-6">
                 {/* Page Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
@@ -230,7 +233,7 @@ export default function ReceivingPage() {
                 {/* Sessions List */}
                 <div className="grid gap-3 md:gap-4">
                     {filteredSessions.map((session) => {
-                        const totalItems = session.items.reduce((s, i) => s + i.quantity, 0);
+                        const totalItems = session.items.reduce((s, i) => s + i.expectedQuantity, 0);
                         const scannedItems = session.items.reduce((s, i) => s + i.scannedQuantity, 0);
 
                         return (
@@ -251,37 +254,24 @@ export default function ReceivingPage() {
                                             </div>
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                    <span className="font-bold text-lg tracking-tight truncate">{session.id}</span>
-                                                    <Badge className="font-bold text-[10px] uppercase tracking-wider" variant={getStatusColor(session.status)}>{getStatusText(session.status)}</Badge>
-                                                </div>
-
-                                                {/* Invoice & Supplier Info */}
-                                                <div className="text-xs md:text-sm text-muted-foreground flex items-center gap-x-3 gap-y-1 flex-wrap mb-2">
-                                                    <span className="flex items-center gap-1.5 min-w-0">
-                                                        {session.type === 'manual' || (!session.type && session.invoiceNumber?.includes('Manual_Invoice')) ? (
-                                                            <>
-                                                                <Keyboard className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                                                                <span className="truncate">Ручная приемка</span>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                                                                <span className="truncate">{session.invoiceNumber || "Нет накладной"}</span>
-                                                            </>
-                                                        )}
-                                                    </span>
-                                                    <span className="flex items-center gap-1.5">
-                                                        <PackageCheck className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                                                        <span className="truncate">{session.supplier || "Поставщик не указан"}</span>
-                                                    </span>
+                                                    <div className="flex items-center gap-2 group/title" title={`Поставщик: ${session.supplier} -> Склад: ${getWarehouseName(session)}`}>
+                                                        <span className="font-bold text-lg md:text-xl tracking-tight text-foreground/90 group-hover/title:text-primary transition-colors">
+                                                            {session.supplier || "Неизвестный"}
+                                                        </span>
+                                                        <ArrowRight className="h-4 w-4 text-muted-foreground/40" />
+                                                        <span className="font-bold text-lg md:text-xl tracking-tight text-foreground/90 group-hover/title:text-primary transition-colors">
+                                                            {getWarehouseName(session)}
+                                                        </span>
+                                                    </div>
+                                                    <Badge className="font-bold text-[10px] uppercase tracking-wider ml-1" variant={getStatusColor(session.status)}>{getStatusText(session.status)}</Badge>
                                                 </div>
 
                                                 {/* Warehouse & Timing */}
                                                 <div className="bg-muted/30 rounded-lg p-2.5 space-y-2 border border-border/50">
                                                     <div className="flex items-center gap-2 text-sm font-bold text-foreground/90">
                                                         <div className="h-2 w-2 rounded-full bg-primary shrink-0" />
-                                                        <span className="uppercase text-[10px] tracking-widest opacity-60 font-bold mr-1 shrink-0">Склад:</span>
-                                                        <span className="truncate">{getWarehouseName(session.warehouseId)}</span>
+                                                        <span className="uppercase text-[10px] tracking-widest opacity-60 font-bold mr-1 shrink-0">ID:</span>
+                                                        <span className="truncate font-mono text-xs">{session.invoiceNumber || session.id}</span>
                                                     </div>
 
                                                     <div className="flex items-center gap-4 flex-wrap text-[11px] font-mono font-medium text-muted-foreground">

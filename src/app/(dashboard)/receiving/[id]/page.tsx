@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { receivingService, ReceivingSession, ReceivingItem } from "@/lib/receiving-service";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, AlertTriangle, ArrowLeft, PackageCheck, Trash2 } from "lucide-react";
+import { Check, AlertTriangle, ArrowLeft, ArrowRight, PackageCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useScanDetection } from "@/lib/use-scan-detection";
 import { useTSDMode } from "@/contexts/TSDModeContext";
@@ -21,16 +21,25 @@ export default function ReceivingDashboard() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (id) {
-            const data = receivingService.getById(id);
-            if (data) {
-                setSession(data);
-            } else {
-                toast.error("Сессия не найдена");
-                router.push('/receiving');
+        const loadData = async () => {
+            if (id) {
+                try {
+                    const data = await receivingService.getById(id);
+                    if (data) {
+                        setSession(data);
+                    } else {
+                        toast.error("Сессия не найдена");
+                        router.push('/receiving');
+                    }
+                } catch (error) {
+                    console.error(error);
+                    toast.error("Ошибка загрузки");
+                } finally {
+                    setLoading(false);
+                }
             }
-            setLoading(false);
-        }
+        };
+        loadData();
     }, [id, router]);
 
     const handleCardClick = (item: ReceivingItem) => {
@@ -43,11 +52,11 @@ export default function ReceivingDashboard() {
             const cleanCode = code.trim();
             const foundItem = session.items.find(i =>
                 (i.sku && i.sku.toLowerCase() === cleanCode.toLowerCase()) ||
-                (i.originalName && i.originalName.toLowerCase() === cleanCode.toLowerCase())
+                (i.name && i.name.toLowerCase() === cleanCode.toLowerCase())
             );
 
             if (foundItem) {
-                toast.success(`Товар найден: ${foundItem.originalName}`);
+                toast.success(`Товар найден: ${foundItem.name}`);
                 router.push(`/receiving/${id}/scan/${foundItem.id}`);
             } else {
                 toast.error(`Товар со штрихкодом "${cleanCode}" не найден в накладной`);
@@ -78,24 +87,29 @@ export default function ReceivingDashboard() {
         return "bg-yellow-50 border-yellow-200 text-yellow-700";
     };
 
-    const handleDeleteSession = () => {
+    const handleDeleteSession = async () => {
         if (!confirm("Вы уверены, что хотите УДАЛИТЬ эту приемку? Все данные будут потеряны.")) return;
-        receivingService.delete(id);
-        toast.success("Приемка удалена");
-        router.push('/receiving');
+        try {
+            await receivingService.delete(id);
+            toast.success("Приемка удалена");
+            router.push('/receiving');
+        } catch (error) {
+            console.error(error);
+            toast.error("Ошибка при удалении");
+        }
     };
 
     if (loading) return <div className="p-8 flex justify-center">Загрузка...</div>;
     if (!session) return null;
 
     const totalScanned = session.items.reduce((acc, i) => acc + (i.scannedQuantity || 0), 0);
-    const totalExpected = session.items.reduce((acc, i) => acc + i.quantity, 0);
+    const totalExpected = session.items.reduce((acc, i) => acc + i.expectedQuantity, 0);
     const progressPercent = Math.min(100, Math.round((totalScanned / totalExpected) * 100));
 
     return (
         <div className="flex flex-col h-full">
             <main className={`flex-1 overflow-y-auto ${isTSDMode ? 'p-2' : 'p-4'} bg-muted/10`}>
-                <div className="max-w-6xl mx-auto space-y-6">
+                <div className="space-y-6">
 
                     {/* Top Bar */}
                     <div className="flex flex-col gap-4">
@@ -104,8 +118,17 @@ export default function ReceivingDashboard() {
                                 <ArrowLeft className="mr-2 h-4 w-4" /> Назад
                             </Button>
                             <div className="text-right">
-                                <div className="text-sm text-muted-foreground">{session.invoiceNumber || session.id}</div>
-                                <div className="font-bold text-lg">Склад</div>
+                                <div className="text-xs text-muted-foreground font-mono mb-1">{session.invoiceNumber || session.id}</div>
+                                <div className="font-bold text-lg flex items-center justify-end gap-2">
+                                    <span>{session.supplier || "Поставщик"}</span>
+                                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                                    <span>{session.warehouse?.name || "Склад"}</span>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                    {session.status === 'DRAFT' ? 'Черновик' :
+                                        session.status === 'IN_PROGRESS' ? 'В процессе' :
+                                            session.status === 'COMPLETED' ? 'Завершено' : session.status}
+                                </div>
                             </div>
                         </div>
 
@@ -140,7 +163,7 @@ export default function ReceivingDashboard() {
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-20">
                         {session.items.map((item) => {
                             const current = item.scannedQuantity || 0;
-                            const total = item.quantity;
+                            const total = item.expectedQuantity;
                             const statusClass = getStatusColor(current, total);
 
                             return (
@@ -154,8 +177,8 @@ export default function ReceivingDashboard() {
                                 `}
                                 >
                                     <div>
-                                        <div className="font-medium line-clamp-2 leading-tight mb-1" title={item.originalName}>
-                                            {item.originalName}
+                                        <div className="font-medium line-clamp-2 leading-tight mb-1" title={item.name}>
+                                            {item.name}
                                         </div>
                                         {item.sku && <div className="text-xs opacity-70 font-mono">{item.sku}</div>}
                                     </div>

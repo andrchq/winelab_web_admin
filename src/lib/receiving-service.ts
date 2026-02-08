@@ -1,14 +1,19 @@
+import { api } from "./api";
 import { InvoiceItem } from "./file-parser";
 
-export interface ReceivingItem extends InvoiceItem {
-    mappedProductId?: string; // ID from product catalog
+export interface ReceivingItem {
+    id: string;
+    name: string;
+    sku?: string;
+    expectedQuantity: number;
     scannedQuantity: number;
-    // We can track individual scans here too if needed
+    productId?: string;
     scans?: {
         id: string;
-        timestamp: number;
+        timestamp: number | string;
         quantity: number;
         isManual: boolean;
+        code?: string;
     }[];
 }
 
@@ -16,146 +21,78 @@ export interface ReceivingSession {
     id: string;
     warehouseId: string;
     items: ReceivingItem[];
-    status: 'draft' | 'in_progress' | 'completed';
+    status: 'draft' | 'in_progress' | 'completed' | 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED'; // Handle both casing
     createdAt: string;
     completedAt?: string;
     invoiceNumber?: string;
     supplier?: string;
     type?: 'manual' | 'file';
+    warehouse?: { id: string; name: string };
+    createdBy?: { id: string; name: string };
 }
 
-const STORAGE_KEY = 'winelab_receiving_sessions';
-
 export const receivingService = {
-    getAll: (): ReceivingSession[] => {
-        if (typeof window === 'undefined') return [];
-        const data = localStorage.getItem(STORAGE_KEY);
-        return data ? JSON.parse(data) : [];
-    },
-
-    getById: (id: string): ReceivingSession | undefined => {
-        if (typeof window === 'undefined') return undefined;
-        const sessions = receivingService.getAll();
-        return sessions.find(s => s.id === id);
-    },
-
-    save: (session: ReceivingSession) => {
-        const sessions = receivingService.getAll();
-        const index = sessions.findIndex(s => s.id === session.id);
-        if (index >= 0) {
-            sessions[index] = session;
-        } else {
-            sessions.push(session);
+    getAll: async (): Promise<ReceivingSession[]> => {
+        try {
+            return await api.get<ReceivingSession[]>('/receiving');
+        } catch (error) {
+            console.error('Failed to fetch sessions:', error);
+            return [];
         }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
     },
 
-    delete: (sessionId: string) => {
-        const sessions = receivingService.getAll();
-        const filtered = sessions.filter(s => s.id !== sessionId);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    getById: async (id: string): Promise<ReceivingSession | null> => {
+        try {
+            return await api.get<ReceivingSession>(`/receiving/${id}`);
+        } catch (error) {
+            console.error(`Failed to fetch session ${id}:`, error);
+            return null;
+        }
     },
 
-    create: (data: Omit<ReceivingSession, 'id' | 'createdAt' | 'status' | 'items'> & { items: InvoiceItem[], mapping: Record<string, string> }): ReceivingSession => {
-        const session: ReceivingSession = {
-            id: `REC-${Date.now().toString().slice(-6)}`,
+    create: async (data: {
+        warehouseId: string;
+        items: InvoiceItem[];
+        mapping: Record<string, string>;
+        invoiceNumber?: string;
+        supplier?: string;
+        type?: 'manual' | 'file';
+    }) => {
+        // Map frontend data structure to backend expected DTO
+        const payload = {
             warehouseId: data.warehouseId,
-            status: 'draft',
-            createdAt: new Date().toISOString(),
-            items: data.items.map(item => ({
-                ...item,
-                mappedProductId: data.mapping[item.id],
-                scannedQuantity: 0,
-                scans: []
-            })),
             invoiceNumber: data.invoiceNumber,
             supplier: data.supplier,
-            type: data.type
+            type: data.type,
+            items: data.items.map(item => ({
+                name: item.originalName,
+                sku: item.sku,
+                expectedQuantity: item.quantity,
+                productId: data.mapping[item.id]
+            }))
         };
-        receivingService.save(session);
-        return session;
+
+        return await api.post<ReceivingSession>('/receiving', payload);
     },
 
-    updateItem: (sessionId: string, itemId: string, delta: number, isManual = false, code?: string) => {
-        const session = receivingService.getById(sessionId);
-        if (!session) return null;
-
-        const itemIndex = session.items.findIndex(i => i.id === itemId);
-        if (itemIndex === -1) return null;
-
-        const item = session.items[itemIndex];
-
-        // Add scan record
-        if (!item.scans) item.scans = [];
-        item.scans.unshift({ // Add to beginning
-            id: Math.random().toString(36).substr(2, 9),
-            timestamp: Date.now(),
-            quantity: delta,
+    updateItem: async (sessionId: string, itemId: string, delta: number, isManual = false, code?: string) => {
+        return await api.patch<ReceivingSession>(`/receiving/${sessionId}/items/${itemId}`, {
+            scannedQuantity: delta,
             isManual,
-            // @ts-ignore
             code
         });
-
-        // Update total
-        item.scannedQuantity = item.scans.reduce((acc, s) => acc + s.quantity, 0);
-
-        // Update session status if started
-        if (session.status === 'draft') session.status = 'in_progress';
-
-        receivingService.save(session);
-        return session;
     },
 
-    removeScan: (sessionId: string, itemId: string, scanId: string) => {
-        const session = receivingService.getById(sessionId);
-        if (!session) return null;
-
-        const itemIndex = session.items.findIndex(i => i.id === itemId);
-        if (itemIndex === -1) return null;
-
-        const item = session.items[itemIndex];
-        if (!item.scans) return session;
-
-        item.scans = item.scans.filter(s => s.id !== scanId);
-        item.scannedQuantity = item.scans.reduce((acc, s) => acc + s.quantity, 0);
-
-        receivingService.save(session);
-        return session;
+    removeScan: async (sessionId: string, itemId: string, scanId: string) => {
+        return await api.delete<ReceivingSession>(`/receiving/${sessionId}/items/${itemId}/scans/${scanId}`);
     },
 
     commit: async (sessionId: string) => {
-        const session = receivingService.getById(sessionId);
-        if (!session) throw new Error("Session not found");
+        return await api.post<{ success: true }>(`/receiving/${sessionId}/complete`);
+    },
 
-        const itemsToCommit = session.items
-            .filter(item => item.mappedProductId && (item.scannedQuantity || 0) !== 0)
-            .map(item => ({
-                productId: item.mappedProductId!,
-                quantity: item.scannedQuantity
-            }));
-
-        if (itemsToCommit.length === 0) {
-            throw new Error("No items to commit");
-        }
-
-        try {
-            // Import api dynamically to avoid cycle if any, or just use fetch
-            // Using standard fetch for simplicity in this specific service pattern or assuming global api
-            // Let's use the local api util
-            // We need to import it at top of file, but let's assume it's available or use window.fetch
-            const { api } = await import('@/lib/api');
-            await api.post('/receiving/commit', {
-                warehouseId: session.warehouseId,
-                items: itemsToCommit
-            });
-
-            session.status = 'completed';
-            session.completedAt = new Date().toISOString();
-            receivingService.save(session);
-            return true;
-        } catch (e) {
-            console.error(e);
-            throw e;
-        }
+    delete: async (sessionId: string) => {
+        return await api.delete<{ success: true }>(`/receiving/${sessionId}`);
     }
 };
+

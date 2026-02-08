@@ -42,9 +42,18 @@ export class ReceivingController {
     async updateItem(
         @Param('sessionId') sessionId: string,
         @Param('itemId') itemId: string,
-        @Body() body: { scannedQuantity: number },
+        @Body() body: { scannedQuantity: number; isManual?: boolean; code?: string },
     ) {
         return this.receivingService.updateItem(sessionId, itemId, body);
+    }
+
+    @Delete(':sessionId/items/:itemId/scans/:scanId')
+    async removeScan(
+        @Param('sessionId') sessionId: string,
+        @Param('itemId') itemId: string,
+        @Param('scanId') scanId: string,
+    ) {
+        return this.receivingService.removeScan(sessionId, itemId, scanId);
     }
 
     @Post(':id/complete')

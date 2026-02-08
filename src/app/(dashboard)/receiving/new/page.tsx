@@ -96,9 +96,9 @@ export default function NewReceivingPage() {
     };
 
     // Step 3: Create Session (Mock)
-    const handleCreateSession = () => {
+    const handleCreateSession = async () => {
         try {
-            const session = receivingService.create({
+            const session = await receivingService.create({
                 warehouseId,
                 items: parsedItems,
                 mapping,

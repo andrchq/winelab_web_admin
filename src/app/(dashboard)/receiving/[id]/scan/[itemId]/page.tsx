@@ -37,18 +37,23 @@ export default function ScanningPage() {
     // Manual Entry
     const [manualQty, setManualQty] = useState<string>("");
 
-    const loadData = () => {
-        const s = receivingService.getById(sessionId);
-        if (s) {
-            setSession(s);
-            const i = s.items.find(x => x.id === itemId);
-            if (i) setItem(i);
-            else {
-                toast.error("Товар не найден");
-                router.push(`/receiving/${sessionId}`);
+    const loadData = async () => {
+        try {
+            const s = await receivingService.getById(sessionId);
+            if (s) {
+                setSession(s);
+                const i = s.items.find(x => x.id === itemId);
+                if (i) setItem(i);
+                else {
+                    toast.error("Товар не найден");
+                    router.push(`/receiving/${sessionId}`);
+                }
+            } else {
+                router.push('/receiving');
             }
-        } else {
-            router.push('/receiving');
+        } catch (error) {
+            console.error(error);
+            toast.error("Ошибка загрузки");
         }
     };
 
@@ -56,22 +61,29 @@ export default function ScanningPage() {
         loadData();
     }, [sessionId, itemId]);
 
-    const handleUpdate = (qty: number, isManual = false, code?: string) => {
+    const handleUpdate = async (qty: number, isManual = false, code?: string) => {
         if (!itemId || !sessionId) return;
 
-        receivingService.updateItem(sessionId, itemId, qty, isManual, code);
-        loadData(); // Reload to get updated scans list
-
-        const msg = isManual ? `Ручной ввод: ${qty}` : `Скан: +${qty}`;
-        toast.success(msg);
+        try {
+            await receivingService.updateItem(sessionId, itemId, qty, isManual, code);
+            await loadData(); // Reload to get updated scans list
+            const msg = isManual ? `Ручной ввод: ${qty}` : `Скан: +${qty}`;
+            toast.success(msg);
+        } catch (error) {
+            console.error(error);
+            toast.error("Ошибка обновления");
+        }
     };
 
-    const handleDelete = (scanId: string) => {
+    const handleDelete = async (scanId: string) => {
         if (!itemId || !sessionId) return;
-        if (confirm("Удалить эту запись?")) {
-            receivingService.removeScan(sessionId, itemId, scanId);
-            loadData();
+        try {
+            await receivingService.removeScan(sessionId, itemId, scanId);
+            await loadData();
             toast.info("Запись удалена");
+        } catch (error) {
+            console.error(error);
+            toast.error("Ошибка удаления");
         }
     };
 
@@ -118,8 +130,8 @@ export default function ScanningPage() {
 
     if (!session || !item) return <div className="p-8">Загрузка...</div>;
 
-    const progress = Math.min(100, Math.round(((item.scannedQuantity || 0) / item.quantity) * 100));
-    const isOver = (item.scannedQuantity || 0) > item.quantity;
+    const progress = Math.min(100, Math.round(((item.scannedQuantity || 0) / item.expectedQuantity) * 100));
+    const isOver = (item.scannedQuantity || 0) > item.expectedQuantity;
 
     return (
         <div className="flex flex-col h-full bg-background">
@@ -132,7 +144,7 @@ export default function ScanningPage() {
                             <ArrowLeft className="h-6 w-6" />
                         </Button>
                         <div className="min-w-0 flex-1">
-                            <h2 className="text-lg md:text-xl font-bold leading-tight truncate px-1">{item.originalName}</h2>
+                            <h2 className="text-lg md:text-xl font-bold leading-tight truncate px-1">{item.name}</h2>
                             <p className="text-xs md:text-sm text-muted-foreground px-1 truncate">{item.sku || "Без артикула"}</p>
                         </div>
                     </div>
@@ -140,7 +152,7 @@ export default function ScanningPage() {
                     {/* Main Counter */}
                     <Card className={`border-2 shadow-md transition-colors duration-300 ${isOver
                         ? 'border-red-500/50 bg-red-500/5'
-                        : item.scannedQuantity === item.quantity
+                        : item.scannedQuantity === item.expectedQuantity
                             ? 'border-green-500/50 bg-green-500/5'
                             : 'border-primary/50 bg-primary/5'
                         }`}>
@@ -154,7 +166,7 @@ export default function ScanningPage() {
                                     {item.scannedQuantity || 0}
                                 </span>
                                 <span className="text-2xl md:text-3xl text-muted-foreground/60 font-medium font-mono">
-                                    / {item.quantity}
+                                    / {item.expectedQuantity}
                                 </span>
                             </div>
                             <div className="mt-4 h-3 md:h-4 bg-muted/30 rounded-full overflow-hidden p-0.5 border border-muted/20">

@@ -6,20 +6,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Pencil, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface AddProductDialogProps {
     onSuccess?: () => void;
 }
 
 import { useCategories, useProducts } from "@/lib/hooks";
+import type { Product } from "@/types/api";
 
 export function AddProductDialog({ onSuccess }: AddProductDialogProps) {
+    const { hasRole } = useAuth();
     const [open, setOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [search, setSearch] = useState("");
+    const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [formData, setFormData] = useState({
         name: "",
         sku: "",
@@ -28,41 +32,82 @@ export function AddProductDialog({ onSuccess }: AddProductDialogProps) {
     });
 
     const { data: categories } = useCategories();
-    const { data: products } = useProducts();
+    const { data: products, refetch: refreshProducts } = useProducts();
+
+    const canManageModels = hasRole(['ADMIN', 'MANAGER', 'WAREHOUSE']);
 
     const filteredProducts = products?.filter(p =>
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.sku.toLowerCase().includes(search.toLowerCase())
     ) || [];
 
+    const resetForm = () => {
+        setFormData({ name: "", sku: "", category: "", description: "" });
+        setEditingProduct(null);
+    };
+
+    const handleEdit = (product: Product) => {
+        setEditingProduct(product);
+        setFormData({
+            name: product.name,
+            sku: product.sku,
+            category: product.category?.id || "",
+            description: product.description || ""
+        });
+    };
+
+    const handleDelete = async (productId: string) => {
+        if (!confirm("Удалить эту модель?")) return;
+
+        try {
+            await api.delete(`/products/${productId}`);
+            toast.success("Модель удалена");
+            refreshProducts();
+            onSuccess?.();
+        } catch (error) {
+            toast.error("Ошибка при удалении модели");
+            console.error(error);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
 
         try {
-            await api.post('/products', {
-                ...formData,
-                categoryId: formData.category // Send categoryId
-            });
-            toast.success("Модель добавлена");
+            if (editingProduct) {
+                await api.patch(`/products/${editingProduct.id}`, {
+                    ...formData,
+                    categoryId: formData.category
+                });
+                toast.success("Модель обновлена");
+            } else {
+                await api.post('/products', {
+                    ...formData,
+                    categoryId: formData.category
+                });
+                toast.success("Модель добавлена");
+            }
             setOpen(false);
-            setFormData({ name: "", sku: "", category: "", description: "" });
+            resetForm();
             setSearch("");
+            refreshProducts();
             onSuccess?.();
         } catch (error) {
-            toast.error("Ошибка при создании модели");
+            toast.error(editingProduct ? "Ошибка при обновлении модели" : "Ошибка при создании модели");
             console.error(error);
         } finally {
             setIsLoading(false);
         }
     };
 
+
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
                 <Button variant="gradient">
                     <Plus className="h-4 w-4" />
-                    Добавить модель
+                    Управление моделями
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
@@ -75,29 +120,55 @@ export function AddProductDialog({ onSuccess }: AddProductDialogProps) {
 
                 <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
                     {/* Left Column: List */}
-                    <div className="flex flex-col gap-4 min-h-[300px] border-r pr-6">
+                    <div className="flex flex-col gap-3 min-h-[300px] md:border-r md:pr-6">
                         <div className="relative">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
                             <Input
                                 placeholder="Поиск модели..."
-                                className="pl-9"
+                                className="pl-9 focus-visible:ring-1 focus-visible:ring-offset-0"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
                         </div>
 
-                        <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                        <div className="flex-1 overflow-y-auto space-y-2">
                             {filteredProducts.length === 0 ? (
                                 <div className="text-center py-8 text-muted-foreground text-sm">
                                     {search ? "Ничего не найдено" : "Список пуст"}
                                 </div>
                             ) : (
                                 filteredProducts.map(product => (
-                                    <div key={product.id} className="p-3 rounded-lg border bg-muted/30 text-sm">
-                                        <div className="font-medium">{product.name}</div>
-                                        <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
-                                            <span className="bg-muted px-1.5 py-0.5 rounded border">{product.sku}</span>
-                                            <span>{product.category.name}</span>
+                                    <div key={product.id} className="p-3 rounded-lg border bg-muted/30 text-sm hover:bg-muted/50 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-medium truncate">{product.name}</div>
+                                                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                                    <span className="bg-muted px-1.5 py-0.5 rounded border">{product.sku}</span>
+                                                    <span className="bg-muted/50 px-1.5 py-0.5 rounded border">{product.category?.name}</span>
+                                                </div>
+                                            </div>
+                                            {canManageModels && (
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8"
+                                                        onClick={() => handleEdit(product)}
+                                                        title="Редактировать"
+                                                    >
+                                                        <Pencil className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-destructive hover:text-destructive"
+                                                        onClick={() => handleDelete(product.id)}
+                                                        title="Удалить"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 ))
@@ -105,11 +176,32 @@ export function AddProductDialog({ onSuccess }: AddProductDialogProps) {
                         </div>
                     </div>
 
-                    {/* Right Column: Create Form */}
-                    <div className="flex flex-col gap-4 overflow-y-auto pl-1">
-                        <div className="font-semibold flex items-center gap-2 text-primary">
-                            <Plus className="h-4 w-4" />
-                            Новая модель
+                    {/* Right Column: Create/Edit Form */}
+                    <div className="flex flex-col gap-4 overflow-y-auto">
+                        <div className="flex items-center justify-between h-10 px-3 rounded-lg border bg-background">
+                            <div className="font-semibold flex items-center gap-2 text-primary text-sm">
+                                {editingProduct ? (
+                                    <>
+                                        <Pencil className="h-4 w-4" />
+                                        Редактирование
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus className="h-4 w-4" />
+                                        Добавление новой модели
+                                    </>
+                                )}
+                            </div>
+                            {editingProduct && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={resetForm}
+                                    className="h-6 px-2 text-xs"
+                                >
+                                    Отмена
+                                </Button>
+                            )}
                         </div>
 
                         <form id="create-product-form" onSubmit={handleSubmit} className="space-y-4">
@@ -177,7 +269,10 @@ export function AddProductDialog({ onSuccess }: AddProductDialogProps) {
                         Отмена
                     </Button>
                     <Button type="submit" form="create-product-form" disabled={isLoading}>
-                        {isLoading ? "Создание..." : "Создать"}
+                        {isLoading
+                            ? (editingProduct ? "Сохранение..." : "Создание...")
+                            : (editingProduct ? "Сохранить" : "Создать")
+                        }
                     </Button>
                 </DialogFooter>
             </DialogContent>

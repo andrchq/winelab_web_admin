@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { YMaps, Map, Placemark, ZoomControl, TypeSelector, FullscreenControl } from '@pbe/react-yandex-maps';
+import { YMaps, Map, Placemark, TypeSelector, TrafficControl } from '@pbe/react-yandex-maps';
 
 interface YandexMapProps {
     center?: [number, number];
@@ -21,7 +21,7 @@ const defaultCenter: [number, number] = [55.751574, 37.573856]; // Moscow
 
 export default function YandexMap({
     center: initialCenter = defaultCenter,
-    zoom = 15,
+    zoom = 16,
     height = "100%",
     width = "100%",
     placemarks = [],
@@ -64,8 +64,8 @@ export default function YandexMap({
                 query={{ lang: 'ru_RU', apikey: process.env.NEXT_PUBLIC_YANDEX_MAPS_KEY, load: 'package.full' }}
             >
                 <Map
-                    state={{ center: mapCenter, zoom }}
-                    defaultState={{ center: initialCenter, zoom }}
+                    state={{ center: mapCenter, zoom, controls: [] }}
+                    defaultState={{ center: initialCenter, zoom, controls: [] }}
                     width="100%"
                     height="100%"
                     onLoad={(ymapsInstance: any) => {
@@ -74,8 +74,8 @@ export default function YandexMap({
                     }}
                     modules={['geocode']}
                 >
-                    <ZoomControl options={{ size: "small" }} />
-                    <FullscreenControl />
+                    <TrafficControl options={{ float: 'right' } as any} />
+                    <TypeSelector options={{ float: 'right' } as any} />
 
                     {mapPlacemarks.map((mark, index) => (
                         <Placemark

@@ -2,12 +2,13 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { TSDDashboard } from "@/components/tsd/TSDDashboard";
 
 interface TSDModeContextType {
     isTSDMode: boolean;
+    isExitingTSD: boolean;
     setIsTSDMode: (value: boolean) => void;
     enableTSDMode: () => void;
     disableTSDMode: () => void;
@@ -17,11 +18,16 @@ const TSDModeContext = createContext<TSDModeContextType | undefined>(undefined);
 
 export function TSDModeProvider({ children }: { children: React.ReactNode }) {
     const [isTSDMode, setIsTSDMode] = useState(false);
+    const [isExitingTSD, setIsExitingTSD] = useState(false);
     const [showPrompt, setShowPrompt] = useState(false);
     const [isInitialized, setIsInitialized] = useState(false);
+    const [isEnteringTSD, setIsEnteringTSD] = useState(false);
     const { isAuthenticated, isLoading } = useAuth();
     const pathname = usePathname();
     const router = useRouter();
+
+    // Check if we're on a TSD-related page
+    const isOnTSDPage = pathname?.startsWith('/tsd') || pathname?.startsWith('/receiving') || pathname?.startsWith('/shipments');
 
     // Initial sync with localStorage - runs once on mount
     useEffect(() => {
@@ -35,6 +41,13 @@ export function TSDModeProvider({ children }: { children: React.ReactNode }) {
         }, 0);
         return () => clearTimeout(timer);
     }, []);
+
+    // Hide entering overlay when we reach the TSD page
+    useEffect(() => {
+        if (isEnteringTSD && isOnTSDPage) {
+            setIsEnteringTSD(false);
+        }
+    }, [isEnteringTSD, isOnTSDPage]);
 
     // Logic for showing prompt - only runs after initialization
     useEffect(() => {
@@ -73,20 +86,27 @@ export function TSDModeProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem('winelab_tsd_mode', 'true');
         setIsTSDMode(true);
         setShowPrompt(false);
-        // Redirect to TSD Dashboard
+        setIsEnteringTSD(true); // Show overlay immediately
         router.push('/tsd');
     };
 
     const disableTSDMode = () => {
+        setIsExitingTSD(true);
         localStorage.setItem('winelab_tsd_mode', 'false');
         setIsTSDMode(false);
         setShowPrompt(false);
+        setIsEnteringTSD(false);
         router.push('/');
+
+        // Reset exiting flag after navigation completes
+        setTimeout(() => {
+            setIsExitingTSD(false);
+        }, 300);
     };
 
     return (
-        <TSDModeContext.Provider value={{ isTSDMode, setIsTSDMode, enableTSDMode, disableTSDMode }}>
-            {/* Global Prompt */}
+        <TSDModeContext.Provider value={{ isTSDMode, isExitingTSD, setIsTSDMode, enableTSDMode, disableTSDMode }}>
+            {/* Global Prompt for mobile devices */}
             {showPrompt && (
                 <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="bg-card border border-border rounded-xl shadow-2xl max-w-sm w-full p-6 space-y-4 animate-spring-in">
@@ -106,16 +126,14 @@ export function TSDModeProvider({ children }: { children: React.ReactNode }) {
                 </div>
             )}
 
-            <div className={cn(
-                "flex flex-col",
-                isTSDMode ? "fixed inset-0 z-[50] bg-background" : "min-h-screen"
-            )}>
-                <div className="flex-1 relative flex flex-col min-h-0">
-                    {children}
+            {/* Instant TSD overlay - shows immediately when entering TSD mode */}
+            {isEnteringTSD && (
+                <div className="fixed inset-0 z-[200] bg-slate-950" style={{ backgroundColor: '#020617' }}>
+                    <TSDDashboard onExit={disableTSDMode} />
                 </div>
+            )}
 
-                {/* Global Exit Button Removed - Moved to individual pages */}
-            </div>
+            {children}
         </TSDModeContext.Provider>
     );
 }
@@ -127,3 +145,4 @@ export function useTSDMode() {
     }
     return context;
 }
+
