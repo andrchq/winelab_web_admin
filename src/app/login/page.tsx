@@ -149,20 +149,13 @@ export default function LoginPage() {
                     {/* Test accounts hint - Medium-Large */}
                     <div className="mt-8 pt-6 border-t border-border">
                         <p className="text-sm text-muted-foreground text-center mb-3">Тестовые аккаунты:</p>
-                        <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="grid grid-cols-1 gap-3 text-sm">
                             <button
                                 type="button"
                                 onClick={() => { setEmail('admin@winelab.ru'); setPassword('admin123'); }}
                                 className="p-3 bg-muted/50 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all text-center px-4"
                             >
                                 admin@winelab.ru
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { setEmail('manager@winelab.ru'); setPassword('manager123'); }}
-                                className="p-3 bg-muted/50 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all text-center px-4"
-                            >
-                                manager@winelab.ru
                             </button>
                         </div>
                     </div>

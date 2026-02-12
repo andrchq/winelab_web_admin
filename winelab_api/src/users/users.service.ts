@@ -15,7 +15,13 @@ export class UsersService {
                 email: true,
                 name: true,
                 phone: true,
-                role: true,
+                role: {
+                    select: {
+                        id: true,
+                        name: true,
+                        description: true,
+                    },
+                },
                 isActive: true,
                 createdAt: true,
             },
@@ -26,6 +32,17 @@ export class UsersService {
     async findById(id: string) {
         const user = await this.prisma.user.findUnique({
             where: { id },
+            include: {
+                role: {
+                    include: {
+                        permissions: {
+                            include: {
+                                permission: true
+                            }
+                        }
+                    }
+                }
+            }
         });
 
         if (!user) {
@@ -38,6 +55,17 @@ export class UsersService {
     async findByEmail(email: string) {
         return this.prisma.user.findUnique({
             where: { email },
+            include: {
+                role: {
+                    include: {
+                        permissions: {
+                            include: {
+                                permission: true
+                            }
+                        }
+                    }
+                }
+            }
         });
     }
 
@@ -50,17 +78,26 @@ export class UsersService {
 
         const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
+        // Extract roleId if present, otherwise ignore (or set default if we had logic for it)
+        const { roleId, ...userData } = createUserDto;
+
         const user = await this.prisma.user.create({
             data: {
-                ...createUserDto,
+                ...userData,
                 password: hashedPassword,
+                role: roleId ? { connect: { id: roleId } } : undefined,
             },
             select: {
                 id: true,
                 email: true,
                 name: true,
                 phone: true,
-                role: true,
+                role: {
+                    select: {
+                        id: true,
+                        name: true,
+                    }
+                },
                 isActive: true,
                 createdAt: true,
             },
@@ -76,15 +113,30 @@ export class UsersService {
             updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
         }
 
+        const { roleId, ...userData } = updateUserDto;
+
         return this.prisma.user.update({
             where: { id },
-            data: updateUserDto,
+            data: {
+                ...userData,
+                role: roleId ? { connect: { id: roleId } } : undefined,
+            },
             select: {
                 id: true,
                 email: true,
                 name: true,
                 phone: true,
-                role: true,
+                role: {
+                    select: {
+                        id: true,
+                        name: true,
+                        permissions: {
+                            include: {
+                                permission: true
+                            }
+                        }
+                    }
+                },
                 isActive: true,
                 createdAt: true,
             },

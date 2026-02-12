@@ -1,5 +1,7 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
+
 import { useState, useMemo, Fragment } from "react";
 
 import { Warehouse, Plus, Filter, AlertTriangle, TrendingDown, Package, Edit2, Info } from "lucide-react";
@@ -31,9 +33,13 @@ interface GroupedStock {
 export default function StockPage() {
     const { data: stockItems, isLoading, refetch } = useStockItems();
     const { hasRole } = useAuth();
+
+    const searchParams = useSearchParams();
+    const initialLowStock = searchParams.get('filter') === 'low';
+
     const [searchTerm, setSearchTerm] = useState("");
     const [categoryFilter, setCategoryFilter] = useState<string>("all");
-    const [showLowStock, setShowLowStock] = useState(false);
+    const [showLowStock, setShowLowStock] = useState(initialLowStock);
     const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
 
     // Dialog states

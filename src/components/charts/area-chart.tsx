@@ -16,6 +16,10 @@ interface AreaChartProps {
     showGrid?: boolean;
     showAxis?: boolean;
     gradientId?: string;
+    tooltipLabels?: {
+        value: string;
+        value2?: string;
+    };
 }
 
 export function CustomAreaChart({
@@ -25,7 +29,8 @@ export function CustomAreaChart({
     height = 200,
     showGrid = true,
     showAxis = true,
-    gradientId = "colorValue"
+    gradientId = "colorValue",
+    tooltipLabels
 }: AreaChartProps) {
     return (
         <ResponsiveContainer width="100%" height={height}>
@@ -66,6 +71,11 @@ export function CustomAreaChart({
                         border: '1px solid rgba(255,255,255,0.1)',
                         borderRadius: '8px',
                         color: '#fff'
+                    }}
+                    formatter={(value: number, name: string) => {
+                        if (name === 'value' && tooltipLabels?.value) return [value, tooltipLabels.value];
+                        if (name === 'value2' && tooltipLabels?.value2) return [value, tooltipLabels.value2];
+                        return [value, name];
                     }}
                 />
                 <Area

@@ -3,9 +3,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, getAuthToken } from './api';
 import type {
-    Shipment, Delivery, User, StockItem, Warehouse, WarehouseDetails, Request as ApiRequest,
-    Asset, Store, Product, EquipmentCategory
+    Asset, Store, Product, EquipmentCategory, Role
 } from '@/types/api';
+
+// Roles
+export function useRoles() {
+    return useList<Role>('/roles');
+}
+
+export function useRole(id: string) {
+    return useData<Role>(`/roles/${id}`);
+}
 
 // Categories
 export function useCategories() {

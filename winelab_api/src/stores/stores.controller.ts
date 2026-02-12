@@ -1,80 +1,72 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, UseInterceptors, UploadedFile, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { Role } from '@prisma/client';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Query } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { StoresService } from './stores.service';
+import { CreateStoreDto } from './dto/create-store.dto';
+import { UpdateStoreDto } from './dto/update-store.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { SystemPermission } from '../auth/permissions';
 
 @ApiTags('Stores')
 @ApiBearerAuth()
 @Controller('stores')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class StoresController {
     constructor(private storesService: StoresService) { }
 
-    @Post('import')
-    @Roles(Role.ADMIN)
-    @UseInterceptors(FileInterceptor('file'))
-    @ApiConsumes('multipart/form-data')
-    @ApiBody({
-        schema: {
-            type: 'object',
-            properties: {
-                file: {
-                    type: 'string',
-                    format: 'binary',
-                },
-            },
-        },
-    })
-    @ApiOperation({ summary: 'Импорт магазинов из CSV' })
-    async import(@UploadedFile() file: any) {
-        return this.storesService.importStores(file);
-    }
-
     @Get()
+    @RequirePermissions(SystemPermission.STORE_READ)
     @ApiOperation({ summary: 'Список магазинов' })
-    async findAll() {
-        return this.storesService.findAll();
+    @ApiQuery({ name: 'search', required: false })
+    @ApiQuery({ name: 'status', required: false, enum: ['OPEN', 'CLOSED', 'RECONSTRUCTION', 'TECHNICAL_ISSUES'] })
+    @ApiQuery({ name: 'manager', required: false })
+    async findAll(
+        @Query('search') search?: string,
+        @Query('status') status?: string,
+        @Query('manager') manager?: string,
+    ) {
+        return this.storesService.findAll({ search, status, manager });
     }
 
     @Get(':id')
+    @RequirePermissions(SystemPermission.STORE_READ)
     @ApiOperation({ summary: 'Получить магазин' })
     async findOne(@Param('id') id: string) {
         return this.storesService.findById(id);
     }
 
-    @Post()
-    @Roles(Role.ADMIN, Role.MANAGER)
-    @ApiOperation({ summary: 'Создать магазин' })
-    async create(@Body() data: { name: string; address: string; region?: string }, @Request() req: any) {
-        return this.storesService.create(data, req.user?.id);
-    }
-
-    @Patch(':id')
-    @Roles(Role.ADMIN, Role.MANAGER)
-    @ApiOperation({ summary: 'Обновить магазин' })
-    async update(@Param('id') id: string, @Body() data: { name?: string; address?: string }) {
-        return this.storesService.update(id, data);
-    }
-
     @Get(':id/ping')
-    @ApiOperation({ summary: 'Проверить доступность оборудования' })
+    @RequirePermissions(SystemPermission.STORE_READ)
+    @ApiOperation({ summary: 'Пинг IP адресов магазина' })
     async ping(@Param('id') id: string) {
         return this.storesService.pingStoreIps(id);
     }
 
+
+    @Post()
+    @RequirePermissions(SystemPermission.STORE_CREATE)
+    @ApiOperation({ summary: 'Создать магазин' })
+    async create(@Body() createStoreDto: CreateStoreDto) {
+        return this.storesService.create(createStoreDto);
+    }
+
+    @Patch(':id')
+    @RequirePermissions(SystemPermission.STORE_UPDATE)
+    @ApiOperation({ summary: 'Обновить магазин' })
+    async update(@Param('id') id: string, @Body() updateStoreDto: UpdateStoreDto) {
+        return this.storesService.update(id, updateStoreDto);
+    }
+
     @Delete(':id')
-    @Roles(Role.ADMIN, Role.MANAGER)
+    @RequirePermissions(SystemPermission.STORE_DELETE)
     @ApiOperation({ summary: 'Удалить магазин' })
     async delete(@Param('id') id: string) {
         return this.storesService.delete(id);
     }
 
     @Post(':id/equipment')
-    @Roles(Role.ADMIN, Role.MANAGER)
+    @RequirePermissions(SystemPermission.STORE_UPDATE)
     @ApiOperation({ summary: 'Добавить оборудование в магазин' })
     async addEquipment(
         @Param('id') id: string,

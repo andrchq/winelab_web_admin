@@ -1,7 +1,7 @@
 "use client";
 
 
-import { Users, Plus, Shield, Mail, Phone, MoreHorizontal, AlertCircle, UserCheck, UserCog, Warehouse as WarehouseIcon } from "lucide-react";
+import { Users, Plus, Shield, Mail, Phone, MoreHorizontal, AlertCircle, UserCheck, UserCog, Warehouse as WarehouseIcon, Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, StatCard } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/input";
@@ -10,24 +10,74 @@ import { useUsers } from "@/lib/hooks";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { UserDialog } from "@/components/users/user-dialog";
+import { User } from "@/types/api";
+import { api } from "@/lib/api";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const roleConfig: Record<string, { label: string; variant: "destructive" | "accent" | "info" | "success" }> = {
     ADMIN: { label: "Администратор", variant: "destructive" },
     MANAGER: { label: "Руководство", variant: "accent" },
     WAREHOUSE: { label: "Кладовщик", variant: "info" },
     SUPPORT: { label: "Техподдержка", variant: "success" },
+    USER: { label: "Пользователь", variant: "info" },
 };
 
 export default function UsersPage() {
-    const { data: users, isLoading, error } = useUsers();
+    const { data: users, isLoading, error, refetch } = useUsers();
     const [search, setSearch] = useState("");
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+    const handleCreate = () => {
+        setSelectedUser(null);
+        setIsDialogOpen(true);
+    };
+
+    const handleEdit = (user: User) => {
+        setSelectedUser(user);
+        setIsDialogOpen(true);
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm("Вы уверены, что хотите удалить пользователя?")) return;
+        try {
+            await api.delete(`/users/${id}`);
+            refetch();
+        } catch (error) {
+            console.error("Failed to delete user", error);
+            alert("Ошибка при удалении пользователя");
+        }
+    };
+
+    const handleSave = async (data: any) => {
+        try {
+            if (selectedUser) {
+                await api.patch(`/users/${selectedUser.id}`, data);
+            } else {
+                await api.post("/users", data);
+            }
+            refetch();
+        } catch (error) {
+            console.error("Failed to save user", error);
+            alert("Ошибка при сохранении пользователя");
+            throw error; // Re-throw to keep dialog open/loading state if needed, though dialog handles it
+        }
+    };
+
 
     // Compute stats
     const stats = useMemo(() => {
         const total = users.length;
         const active = users.filter(u => u.isActive).length;
-        const admins = users.filter(u => u.role === 'ADMIN').length;
-        const warehouse = users.filter(u => u.role === 'WAREHOUSE').length;
+        // Check if role is object or string to be safe
+        const getRoleName = (u: any) => {
+            if (!u.role) return null;
+            return typeof u.role === 'object' ? u.role.name : u.role;
+        };
+
+        const admins = users.filter(u => getRoleName(u) === 'ADMIN').length;
+        const warehouse = users.filter(u => getRoleName(u) === 'WAREHOUSE').length;
         return { total, active, admins, warehouse };
     }, [users]);
 
@@ -55,7 +105,7 @@ export default function UsersPage() {
                             <h1 className="text-2xl font-bold">Пользователи</h1>
                             <p className="text-sm text-muted-foreground mt-1">Управление пользователями и ролями</p>
                         </div>
-                        <Button variant="gradient" className="w-full sm:w-auto">
+                        <Button variant="gradient" className="w-full sm:w-auto" onClick={handleCreate}>
                             <Plus className="h-4 w-4 mr-2" />
                             Добавить пользователя
                         </Button>
@@ -146,7 +196,8 @@ export default function UsersPage() {
                                         </thead>
                                         <tbody>
                                             {filteredUsers.map((user, index) => {
-                                                const role = roleConfig[user.role];
+                                                const roleName = user.role && typeof user.role === 'object' ? (user.role as any).name : user.role;
+                                                const role = roleName ? roleConfig[roleName] : null;
                                                 return (
                                                     <tr
                                                         key={user.id}
@@ -185,7 +236,7 @@ export default function UsersPage() {
                                                         <td>
                                                             <Badge variant={role?.variant || "secondary"}>
                                                                 <Shield className="h-3 w-3" />
-                                                                {role?.label || user.role}
+                                                                {role?.label || roleName}
                                                             </Badge>
                                                         </td>
                                                         <td>
@@ -197,9 +248,23 @@ export default function UsersPage() {
                                                             {new Date(user.createdAt).toLocaleDateString('ru-RU')}
                                                         </td>
                                                         <td>
-                                                            <Button variant="ghost" size="icon-sm">
-                                                                <MoreHorizontal className="h-4 w-4" />
-                                                            </Button>
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild>
+                                                                    <Button variant="ghost" size="icon-sm">
+                                                                        <MoreHorizontal className="h-4 w-4" />
+                                                                    </Button>
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent align="end">
+                                                                    <DropdownMenuItem onClick={() => handleEdit(user)}>
+                                                                        <Pencil className="mr-2 h-4 w-4" />
+                                                                        Редактировать
+                                                                    </DropdownMenuItem>
+                                                                    <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(user.id)}>
+                                                                        <Trash2 className="mr-2 h-4 w-4" />
+                                                                        Удалить
+                                                                    </DropdownMenuItem>
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
                                                         </td>
                                                     </tr>
                                                 );
@@ -211,6 +276,13 @@ export default function UsersPage() {
                         </CardContent>
                     </Card>
                 </div>
+
+                <UserDialog
+                    open={isDialogOpen}
+                    onOpenChange={setIsDialogOpen}
+                    user={selectedUser}
+                    onSave={handleSave}
+                />
             </div>
 
         </ProtectedRoute >

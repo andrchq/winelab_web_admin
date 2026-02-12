@@ -15,6 +15,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { EventsModule } from './events/events.module';
 import { ReceivingModule } from './receiving/receiving.module';
 import { CategoriesModule } from './categories/categories.module';
+import { RolesModule } from './roles/roles.module';
 
 @Module({
     imports: [
@@ -23,6 +24,7 @@ import { CategoriesModule } from './categories/categories.module';
         }),
         PrismaModule,
         AuthModule,
+        RolesModule,
         UsersModule,
         ProductsModule,
         StockModule,

@@ -12,7 +12,7 @@ interface AuthContextType {
     isAuthenticated: boolean;
     login: (credentials: LoginCredentials) => Promise<void>;
     logout: () => Promise<void>;
-    hasRole: (roles: User['role'][]) => boolean;
+    hasRole: (roles: string[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -73,9 +73,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
     };
 
-    const hasRole = (roles: User['role'][]): boolean => {
-        if (!user) return false;
-        return roles.includes(user.role);
+    const hasRole = (roles: string[]): boolean => {
+        if (!user || !user.role) return false;
+        const userRoleName = typeof user.role === 'object' ? user.role.name : user.role;
+        return roles.includes(userRoleName);
     };
 
     return (

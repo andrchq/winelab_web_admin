@@ -5,9 +5,27 @@ export interface User {
     email: string;
     name: string;
     phone?: string;
-    role: 'ADMIN' | 'MANAGER' | 'WAREHOUSE' | 'SUPPORT';
+    role: string | { name: string; id: string; description?: string } | null;
+    permissions: string[];
     isActive: boolean;
     createdAt: string;
+}
+
+export interface Permission {
+    id: string;
+    code: string;
+    description: string;
+}
+
+export interface Role {
+    id: string;
+    name: string;
+    description?: string;
+    isSystem: boolean;
+    permissions: { permission: Permission }[];
+    _count?: {
+        users: number;
+    };
 }
 
 export interface AuthTokens {
@@ -274,10 +292,11 @@ export interface WarehouseDetails extends Warehouse {
 }
 
 export interface PingStatusResponse {
-    server: boolean;
-    provider1: boolean;
-    provider2: boolean;
+    server: { success: boolean; time?: string };
+    provider1: { success: boolean; time?: string };
+    provider2: { success: boolean; time?: string };
 }
+
 
 
 export interface StoreEquipment {
@@ -331,5 +350,10 @@ export interface ReceivingSession {
         id: string;
         name: string;
     };
+    completedBy?: {
+        id: string;
+        name: string;
+    };
     items: ReceivingItem[];
+
 }

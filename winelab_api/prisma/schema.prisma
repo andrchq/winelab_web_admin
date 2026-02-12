@@ -9,12 +9,8 @@ datasource db {
 
 // ============== ENUMS ==============
 
-enum Role {
-  ADMIN
-  MANAGER
-  WAREHOUSE
-  SUPPORT
-}
+// Role enum replaced by Role model
+// enum Role { ... }
 
 enum AssetCondition {
   WORKING
@@ -75,13 +71,58 @@ enum StoreStatus {
 
 // ============== MODELS ==============
 
+// --- RBAC System ---
+
+model Permission {
+  id          String   @id @default(uuid())
+  code        String   @unique // SYSTEM_CODE e.g., "USER_READ", "STORE_WRITE"
+  description String   // Human readable description
+  category    String   // grouping (e.g. "Users", "Store", "Inventory")
+
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false) // System roles cannot be deleted
+
+  permissions RolePermission[]
+  users       User[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// -------------------
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
   password  String
   name      String
   phone     String?
-  role      Role     @default(SUPPORT)
+  
+  // RBAC Relation
+  roleId    String?
+  role      Role?    @relation(fields: [roleId], references: [id])
+  
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -94,9 +135,11 @@ model User {
   auditLogs        AuditLog[]
   createdStores    Store[]      @relation("StoreCreator")
   receivingSessions ReceivingSession[] @relation("ReceivingCreator")
+  completedReceivings ReceivingSession[] @relation("ReceivingCompleter")
 
   @@map("users")
 }
+
 
 model EquipmentCategory {
   id          String   @id @default(uuid())
@@ -212,8 +255,13 @@ model ReceivingSession {
   createdBy User              @relation("ReceivingCreator", fields: [createdById], references: [id])
   items     ReceivingItem[]
 
+  // Completed by relation
+  completedById String?
+  completedBy   User?           @relation("ReceivingCompleter", fields: [completedById], references: [id])
+
   @@map("receiving_sessions")
 }
+
 
 model ReceivingItem {
   id               String   @id @default(uuid())

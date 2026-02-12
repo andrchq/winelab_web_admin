@@ -60,7 +60,7 @@ export class WarehousesService {
                 warehouseId: id,
                 request: {
                     creator: {
-                        role: 'SUPPORT' // Assuming TP engineers have SUPPORT role, adjust if needed
+                        role: { name: 'SUPPORT' }
                     }
                 }
             },
@@ -86,13 +86,12 @@ export class WarehousesService {
         });
 
         // 3. Last 10 installations (Shipments -> Deliveries to Stores)
-        // "на какие последние 10 магазинов были установки оборудования с этого склада"
         const recentInstallations = await this.prisma.delivery.findMany({
             where: {
                 shipment: {
                     warehouseId: id
                 },
-                status: 'DELIVERED' // Identifying completed installations
+                status: 'DELIVERED'
             },
             take: 10,
             orderBy: { createdAt: 'desc' },
@@ -115,19 +114,6 @@ export class WarehousesService {
         });
 
         // 4. Last 10 new stores opened from this warehouse
-        // "какие последние 10 новые магазины были открыты с этого склада"
-        // This is tricky. Stores aren't "opened from a warehouse" directly in the schema usually.
-        // Maybe it means stores that received their FIRST shipment/installation from this warehouse?
-        // OR stores that have assets linked to this warehouse?
-        // Let's assume it means stores that had their *first* delivery processed from this warehouse.
-        // Alternatively, if there's no direct link, we might just show recent stores that received *any* delivery from here, 
-        // but the prompt says "new stores were opened".
-        // Let's interpret "Opened form this warehouse" as: Stores created recently that received equipment from this warehouse.
-        // Or simpler: Deliveries to stores that were created recently.
-        // Let's try to find stores where the *first* shipment they ever received came from this warehouse.
-
-        // Strategy: Find recent deliveries from this warehouse, then check if the store is "new" (created recently)
-        // OR: Find stores that received a shipment from this warehouse, ordered by store.createdAt desc.
         const newStores = await this.prisma.store.findMany({
             where: {
                 deliveries: {

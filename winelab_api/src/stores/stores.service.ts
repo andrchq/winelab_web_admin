@@ -10,9 +10,27 @@ const execAsync = promisify(exec);
 export class StoresService {
     constructor(private prisma: PrismaService) { }
 
-    async findAll() {
+    async findAll(filters: { search?: string; status?: any; manager?: string } = {}) {
+        const { search, status, manager } = filters;
+        const where: any = { isActive: true };
+
+        if (search) {
+            where.OR = [
+                { name: { contains: search, mode: 'insensitive' } },
+                { address: { contains: search, mode: 'insensitive' } },
+            ];
+        }
+
+        if (status) {
+            where.status = status;
+        }
+
+        if (manager) {
+            where.manager = { contains: manager, mode: 'insensitive' };
+        }
+
         const stores = await this.prisma.store.findMany({
-            where: { isActive: true },
+            where,
             include: {
                 _count: {
                     select: { assets: true, requests: true },
@@ -71,27 +89,47 @@ export class StoresService {
         const store = await this.findById(id);
 
         const pingIp = async (ipWithMask?: string | null) => {
-            if (!ipWithMask) return false;
-            // Strip CIDR mask if present (e.g., 10.11.2.5/30 -> 10.11.2.5)
-            // Also trim whitespace
+            if (!ipWithMask) return { success: false };
             const ip = ipWithMask.split('/')[0].trim();
-
-            if (!ip) return false;
+            if (!ip) return { success: false };
 
             try {
-                // Windows ping uses -n for count, -w for timeout (ms)
-                // Linux uses -c for count, -W for timeout (s)
                 const isWin = process.platform === 'win32';
                 const cmd = isWin
                     ? `ping -n 1 -w 1000 ${ip}`
                     : `ping -c 1 -W 1 ${ip}`;
 
-                await execAsync(cmd);
-                return true;
+                const { stdout } = await execAsync(cmd);
+
+                let time: string | undefined;
+
+
+                // Correct implementation: Only match values that explicitly have 'ms' or 'мс' units.
+                // Support Windows Russian format: "Среднее = 21 мсек"
+                const avgMatch = stdout.match(/(?:Average|Среднее)\s?=\s?([0-9.,]+)/i);
+
+                if (avgMatch) {
+                    time = avgMatch[1].replace(',', '.') + 'ms';
+                } else {
+                    // Fallback to "time=14ms" or "время=14мс"
+                    const msMatch = stdout.match(/[=<]\s?([0-9.,]+)\s?(?:ms|мс|s|сек|мсек)/i);
+                    if (msMatch) {
+                        time = msMatch[1].replace(',', '.') + 'ms';
+                    }
+                }
+
+
+
+
+
+
+                return { success: true, time };
             } catch (e) {
-                return false;
+                console.log(`[DEBUG PING] Failed to ping ${ip}:`, e.message);
+                return { success: false };
             }
         };
+
 
         const [provider1, provider2] = await Promise.all([
             pingIp(store.providerIp1),
@@ -99,10 +137,11 @@ export class StoresService {
         ]);
 
         return {
-            server: false, // Server IP should not be pinged as per new requirement
+            server: { success: false }, // Server IP should not be pinged
             provider1,
             provider2
         };
+
     }
 
     async create(data: {

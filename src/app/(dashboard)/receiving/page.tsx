@@ -72,7 +72,7 @@ export default function ReceivingPage() {
             session.invoiceNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             session.id.toLowerCase().includes(searchTerm.toLowerCase());
 
-        const matchesStatus = statusFilter === 'all' || session.status === statusFilter;
+        const matchesStatus = statusFilter === 'all' || session.status.toLowerCase() === statusFilter;
         const matchesWarehouse = warehouseFilter === 'all' || session.warehouseId === warehouseFilter;
 
         // Type filtering
@@ -81,7 +81,11 @@ export default function ReceivingPage() {
             (typeFilter === 'manual' && isManual) ||
             (typeFilter === 'file' && !isManual);
 
-        const hasProblems = session.items.some(item => item.scannedQuantity > item.expectedQuantity);
+        const hasExcess = session.items.some(item => item.scannedQuantity > item.expectedQuantity);
+        // Shortage is only a problem if the session is marked as COMPLETED
+        const hasShortage = session.status === 'COMPLETED' && session.items.some(item => item.scannedQuantity < item.expectedQuantity);
+
+        const hasProblems = hasExcess || hasShortage;
         const matchesProblems = !problemsOnly || hasProblems;
 
         return matchesSearch && matchesStatus && matchesWarehouse && matchesProblems && matchesType;
@@ -89,9 +93,9 @@ export default function ReceivingPage() {
 
     const statusOptions = [
         { value: 'all', label: 'Все', count: (sessions || []).length },
-        { value: 'in_progress', label: 'В процессе', count: (sessions || []).filter(s => s.status === 'in_progress').length },
-        { value: 'completed', label: 'Завершено', count: (sessions || []).filter(s => s.status === 'completed').length },
-        { value: 'draft', label: 'Черновик', count: (sessions || []).filter(s => s.status === 'draft').length },
+        { value: 'in_progress', label: 'В процессе', count: (sessions || []).filter(s => s.status.toLowerCase() === 'in_progress').length },
+        { value: 'completed', label: 'Завершено', count: (sessions || []).filter(s => s.status.toLowerCase() === 'completed').length },
+        { value: 'draft', label: 'Черновик', count: (sessions || []).filter(s => s.status.toLowerCase() === 'draft').length },
     ] as const;
 
     if (isLoading) {
@@ -101,17 +105,7 @@ export default function ReceivingPage() {
             </div>
         );
     }
-
-    if (error) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[400px] text-destructive">
-                <AlertCircle className="h-10 w-10 mb-4" />
-                <p className="text-lg font-medium">Ошибка загрузки данных</p>
-                <p className="text-sm text-muted-foreground">{error}</p>
-            </div>
-        );
-    }
-
+    // ... (lines 104-235 omitted) ...
     return (
         <div className="p-3 md:p-6 min-h-full bg-muted/5">
             <div className="space-y-4 md:space-y-6">
@@ -144,6 +138,22 @@ export default function ReceivingPage() {
                         </div>
 
                         <div className="flex flex-col md:flex-row gap-4">
+                            {/* 4. Problems Toggle */}
+                            <div className="w-full md:w-auto">
+                                <button
+                                    onClick={() => setProblemsOnly(!problemsOnly)}
+                                    className={`flex items-center justify-center gap-3 px-5 h-full w-full md:w-auto rounded-2xl border-2 transition-all duration-300 group ${problemsOnly
+                                        ? 'border-red-500/50 bg-red-500/5 text-red-500'
+                                        : 'border-dashed border-border/40 hover:border-emerald-500/30 hover:bg-emerald-500/5 text-muted-foreground/70'
+                                        }`}
+                                >
+                                    <div className={`p-1.5 rounded-lg transition-colors ${problemsOnly ? 'bg-red-500 text-white' : 'bg-muted/50 group-hover:bg-emerald-500/10 group-hover:text-emerald-500'}`}>
+                                        <AlertTriangle className="h-4 w-4" />
+                                    </div>
+                                    <span className="text-sm font-bold tracking-tight whitespace-nowrap">Расхождения</span>
+                                </button>
+                            </div>
+
                             {/* 2. Warehouse Filter */}
                             <div className="w-full md:w-56">
                                 <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
@@ -210,23 +220,10 @@ export default function ReceivingPage() {
                                     ))}
                                 </div>
                             </div>
+
+
                         </div>
 
-                        {/* 4. Problems Toggle */}
-                        <div className="flex flex-col sm:flex-row">
-                            <button
-                                onClick={() => setProblemsOnly(!problemsOnly)}
-                                className={`flex items-center justify-center sm:justify-start gap-3 px-5 py-3 rounded-2xl border-2 transition-all duration-300 group w-full sm:w-auto ${problemsOnly
-                                    ? 'border-red-500/50 bg-red-500/5 text-red-500'
-                                    : 'border-dashed border-border/40 hover:border-emerald-500/30 hover:bg-emerald-500/5 text-muted-foreground/70'
-                                    }`}
-                            >
-                                <div className={`p-1.5 rounded-lg transition-colors ${problemsOnly ? 'bg-red-500 text-white' : 'bg-muted/50 group-hover:bg-emerald-500/10 group-hover:text-emerald-500'}`}>
-                                    <AlertTriangle className="h-4 w-4" />
-                                </div>
-                                <span className="text-sm font-bold tracking-tight">Только с расхождениями</span>
-                            </button>
-                        </div>
                     </CardContent>
                 </Card>
 
@@ -235,6 +232,18 @@ export default function ReceivingPage() {
                     {filteredSessions.map((session) => {
                         const totalItems = session.items.reduce((s, i) => s + i.expectedQuantity, 0);
                         const scannedItems = session.items.reduce((s, i) => s + i.scannedQuantity, 0);
+
+                        const hasExcess = session.items.some(item => item.scannedQuantity > item.expectedQuantity);
+                        const hasShortage = session.status === 'COMPLETED' && session.items.some(item => item.scannedQuantity < item.expectedQuantity);
+
+                        let progressColor = 'bg-primary';
+                        if (session.status === 'COMPLETED') {
+                            if (hasExcess) progressColor = 'bg-red-500';
+                            else if (hasShortage) progressColor = 'bg-yellow-500';
+                            else progressColor = 'bg-green-500';
+                        } else if (hasExcess) {
+                            progressColor = 'bg-red-500';
+                        }
 
                         return (
                             <Card
@@ -264,6 +273,12 @@ export default function ReceivingPage() {
                                                         </span>
                                                     </div>
                                                     <Badge className="font-bold text-[10px] uppercase tracking-wider ml-1" variant={getStatusColor(session.status)}>{getStatusText(session.status)}</Badge>
+                                                    {hasShortage && (
+                                                        <Badge className="font-bold text-[10px] uppercase tracking-wider ml-1 bg-orange-500 hover:bg-orange-600 text-white border-none shadow-sm">Недостача</Badge>
+                                                    )}
+                                                    {hasExcess && (
+                                                        <Badge className="font-bold text-[10px] uppercase tracking-wider ml-1" variant="destructive">Излишек</Badge>
+                                                    )}
                                                 </div>
 
                                                 {/* Warehouse & Timing */}
@@ -284,7 +299,13 @@ export default function ReceivingPage() {
                                                                 <Check className="h-3 w-3 opacity-80" />
                                                                 <span>Финиш: {session.completedAt
                                                                     ? new Date(session.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                                                    : "Завершено"}</span>
+                                                                    : "Завершено"}
+                                                                    {session.completedBy && (
+                                                                        <span className="opacity-75 font-normal ml-1 border-l border-green-500/20 pl-1.5">
+                                                                            {session.completedBy.name}
+                                                                        </span>
+                                                                    )}
+                                                                </span>
                                                             </div>
                                                         )}
                                                     </div>
@@ -303,8 +324,7 @@ export default function ReceivingPage() {
                                                 </div>
                                                 <div className="w-full bg-muted/50 h-2.5 rounded-full overflow-hidden p-0.5 border border-muted/10">
                                                     <div
-                                                        className={`h-full rounded-full transition-all duration-700 shadow-sm ${session.status === 'completed' ? 'bg-green-500' : 'bg-primary'
-                                                            }`}
+                                                        className={`h-full rounded-full transition-all duration-700 shadow-sm ${progressColor}`}
                                                         style={{ width: `${(scannedItems / (totalItems || 1)) * 100}%` }}
                                                     />
                                                 </div>
@@ -333,6 +353,7 @@ export default function ReceivingPage() {
                     )}
                 </div>
             </div>
-        </div >
+        </div>
     );
 }
+

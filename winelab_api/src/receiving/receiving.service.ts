@@ -41,6 +41,7 @@ export class ReceivingService {
             include: {
                 warehouse: { select: { id: true, name: true } },
                 createdBy: { select: { id: true, name: true } },
+                completedBy: { select: { id: true, name: true } },
                 items: true,
             },
             orderBy: { createdAt: 'desc' },
@@ -54,6 +55,7 @@ export class ReceivingService {
             include: {
                 warehouse: { select: { id: true, name: true } },
                 createdBy: { select: { id: true, name: true } },
+                completedBy: { select: { id: true, name: true } },
                 items: {
                     include: {
                         product: { select: { id: true, name: true, sku: true } },
@@ -62,6 +64,7 @@ export class ReceivingService {
                 },
             },
         });
+
 
         if (!session) {
             throw new NotFoundException('Сессия приемки не найдена');
@@ -197,7 +200,8 @@ export class ReceivingService {
     }
 
     // Complete session (commit to stock)
-    async complete(sessionId: string) {
+    async complete(sessionId: string, userId?: string) {
+
         const session = await this.prisma.receivingSession.findUnique({
             where: { id: sessionId },
             include: { items: true },
@@ -322,13 +326,16 @@ export class ReceivingService {
                 data: {
                     status: 'COMPLETED',
                     completedAt: new Date(),
+                    completedById: userId || undefined,
                 },
                 include: {
                     warehouse: { select: { id: true, name: true } },
                     createdBy: { select: { id: true, name: true } },
+                    completedBy: { select: { id: true, name: true } },
                     items: true,
                 },
             });
+
 
             // Emit WebSocket event
             this.eventsGateway.server.emit('receiving_update', completedSession);

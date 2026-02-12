@@ -1,20 +1,22 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { Role, RequestStatus, RequestPriority, User } from '@prisma/client';
+import { RequestStatus, RequestPriority, User } from '@prisma/client';
 import { RequestsService } from './requests.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { SystemPermission } from '../auth/permissions';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Requests')
 @ApiBearerAuth()
 @Controller('requests')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class RequestsController {
     constructor(private requestsService: RequestsService) { }
 
     @Get()
+    @RequirePermissions(SystemPermission.REQUEST_READ)
     @ApiOperation({ summary: 'Список заявок' })
     @ApiQuery({ name: 'status', required: false, enum: RequestStatus })
     @ApiQuery({ name: 'priority', required: false, enum: RequestPriority })
@@ -26,12 +28,14 @@ export class RequestsController {
     }
 
     @Get(':id')
+    @RequirePermissions(SystemPermission.REQUEST_READ)
     @ApiOperation({ summary: 'Получить заявку' })
     async findOne(@Param('id') id: string) {
         return this.requestsService.findById(id);
     }
 
     @Post()
+    @RequirePermissions(SystemPermission.REQUEST_CREATE)
     @ApiOperation({ summary: 'Создать заявку' })
     async create(
         @Body() data: { title: string; description?: string; storeId: string; priority?: RequestPriority },
@@ -41,7 +45,7 @@ export class RequestsController {
     }
 
     @Patch(':id/status')
-    @Roles(Role.ADMIN, Role.MANAGER, Role.WAREHOUSE)
+    @RequirePermissions(SystemPermission.REQUEST_UPDATE)
     @ApiOperation({ summary: 'Обновить статус' })
     async updateStatus(
         @Param('id') id: string,
@@ -51,6 +55,7 @@ export class RequestsController {
     }
 
     @Post(':id/comments')
+    @RequirePermissions(SystemPermission.REQUEST_READ) // Assumes anyone who can read can comment
     @ApiOperation({ summary: 'Добавить комментарий' })
     async addComment(
         @Param('id') id: string,
@@ -61,7 +66,7 @@ export class RequestsController {
     }
 
     @Post(':id/assets')
-    @Roles(Role.ADMIN, Role.MANAGER, Role.WAREHOUSE)
+    @RequirePermissions(SystemPermission.REQUEST_UPDATE)
     @ApiOperation({ summary: 'Добавить оборудование к заявке' })
     async addAsset(
         @Param('id') id: string,

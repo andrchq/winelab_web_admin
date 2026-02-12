@@ -137,11 +137,19 @@ export default function ReceivingDashboard() {
                             <CardContent className="p-4 flex flex-col gap-2">
                                 <div className="flex justify-between items-end">
                                     <div>
-                                        <div className="text-sm font-medium text-muted-foreground">Прогресс приемки</div>
+                                        <div className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                                            Прогресс приемки
+                                            {session.completedBy && (
+                                                <Badge variant="outline" className="text-[10px] font-normal h-5 border-green-500/20 text-green-700 bg-green-50">
+                                                    Принял: {session.completedBy.name}
+                                                </Badge>
+                                            )}
+                                        </div>
                                         <div className="text-3xl font-bold font-mono">
                                             {totalScanned} <span className="text-lg text-muted-foreground font-normal">/ {totalExpected}</span>
                                         </div>
                                     </div>
+
                                     <div className="text-right">
                                         <Badge variant={progressPercent === 100 ? "success" : "secondary"}>
                                             {progressPercent}%

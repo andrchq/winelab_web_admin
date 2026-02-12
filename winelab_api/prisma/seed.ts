@@ -1,5 +1,5 @@
 
-import { PrismaClient, Role } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -40,16 +40,32 @@ async function main() {
     console.log('✅ Categories seeded');
 
 
+    // Fetch roles
+    const adminRole = await prisma.role.findUnique({ where: { name: 'ADMIN' } });
+    const managerRole = await prisma.role.findUnique({ where: { name: 'MANAGER' } });
+    const warehouseRole = await prisma.role.findUnique({ where: { name: 'WAREHOUSE' } });
+    const supportRole = await prisma.role.findUnique({ where: { name: 'USER' } }); // Mapping SUPPORT to USER or creating SUPPORT role if needed.
+    // Actually, let's create SUPPORT role if it doesn't exist, as it was in the enum
+    const supportRoleReal = await prisma.role.upsert({
+        where: { name: 'SUPPORT' },
+        update: {},
+        create: { name: 'SUPPORT', description: 'Technical Support', isSystem: true }
+    });
+
+    if (!adminRole || !managerRole || !warehouseRole) {
+        throw new Error('Base roles not found. Please run seed_rbac.ts first.');
+    }
+
     // Create admin user
     const adminPassword = await bcrypt.hash('admin123', 10);
     const admin = await prisma.user.upsert({
         where: { email: 'admin@winelab.ru' },
-        update: {},
+        update: { roleId: adminRole.id },
         create: {
             email: 'admin@winelab.ru',
             password: adminPassword,
             name: 'Администратор',
-            role: Role.ADMIN,
+            roleId: adminRole.id,
         },
     });
     console.log('✅ Admin user created:', admin.email);
@@ -58,13 +74,13 @@ async function main() {
     const managerPassword = await bcrypt.hash('manager123', 10);
     const manager = await prisma.user.upsert({
         where: { email: 'manager@winelab.ru' },
-        update: {},
+        update: { roleId: managerRole.id },
         create: {
             email: 'manager@winelab.ru',
             password: managerPassword,
             name: 'Козлова Мария',
             phone: '+7 (999) 111-22-33',
-            role: Role.MANAGER,
+            roleId: managerRole.id,
         },
     });
     console.log('✅ Manager created:', manager.email);
@@ -73,13 +89,13 @@ async function main() {
     const warehousePassword = await bcrypt.hash('warehouse123', 10);
     const warehouse = await prisma.user.upsert({
         where: { email: 'warehouse@winelab.ru' },
-        update: {},
+        update: { roleId: warehouseRole.id },
         create: {
             email: 'warehouse@winelab.ru',
             password: warehousePassword,
             name: 'Петров Владимир',
             phone: '+7 (999) 222-33-44',
-            role: Role.WAREHOUSE,
+            roleId: warehouseRole.id,
         },
     });
     console.log('✅ Warehouse user created:', warehouse.email);
@@ -88,13 +104,13 @@ async function main() {
     const supportPassword = await bcrypt.hash('support123', 10);
     const support = await prisma.user.upsert({
         where: { email: 'support@winelab.ru' },
-        update: {},
+        update: { roleId: supportRoleReal.id },
         create: {
             email: 'support@winelab.ru',
             password: supportPassword,
             name: 'Сидорова Анна',
             phone: '+7 (999) 333-44-55',
-            role: Role.SUPPORT,
+            roleId: supportRoleReal.id,
         },
     });
     console.log('✅ Support user created:', support.email);

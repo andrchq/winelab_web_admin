@@ -29,7 +29,9 @@ export interface ReceivingSession {
     type?: 'manual' | 'file';
     warehouse?: { id: string; name: string };
     createdBy?: { id: string; name: string };
+    completedBy?: { id: string; name: string };
 }
+
 
 export const receivingService = {
     getAll: async (): Promise<ReceivingSession[]> => {

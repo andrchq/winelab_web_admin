@@ -142,7 +142,7 @@ function InfoRow({
     label: string;
     value?: string | null;
     isLink?: boolean;
-    pingStatus?: boolean;
+    pingStatus?: { success: boolean; time?: string };
 }) {
     if (!value) return null;
 
@@ -155,10 +155,20 @@ function InfoRow({
             <span className="text-muted-foreground text-[11px] uppercase tracking-tight font-medium shrink-0">{label}</span>
             <div className="flex items-center gap-1.5 min-w-0">
                 {pingStatus !== undefined && (
-                    <Badge variant={pingStatus ? "success" : "destructive"} className="h-5 px-1.5 text-[10px]">
-                        {pingStatus ? "Доступен" : "Недоступен"}
-                    </Badge>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        <Badge variant={pingStatus.success ? "success" : "destructive"} className="h-5 px-1.5 text-[10px]">
+                            {pingStatus.success ? "Доступен" : "Недоступен"}
+                        </Badge>
+                        {pingStatus.success && pingStatus.time && (
+                            <Badge variant="outline" className="h-5 px-1.5 min-w-[54px] justify-center text-[10px] font-mono border-primary/20 bg-primary/5 text-primary">
+                                {pingStatus.time}
+                            </Badge>
+                        )}
+
+                    </div>
                 )}
+
+
                 <div className="flex items-center gap-1">
                     {isLink ? (
                         <a
@@ -318,14 +328,19 @@ export default function StoreDetailPage() {
                         {/* Top Section: Header & Map */}
                         <div className="grid gap-6 lg:grid-cols-3 mb-6">
                             {/* Store Header - Info & Stats */}
-                            <Card className="lg:col-span-2 h-full overflow-hidden">
-                                <CardContent className="p-4 sm:p-6 h-full flex flex-col justify-center">
+                            <Card className="lg:col-span-2 h-full overflow-hidden relative shadow-sm">
+                                <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-20">
+                                    <Badge
+                                        variant={getStatusDisplay(store.status, store.isActive).variant}
+                                        className="px-3 py-1 text-[11px] uppercase font-bold tracking-wider shadow-sm border-none"
+                                    >
+                                        {getStatusDisplay(store.status, store.isActive).label}
+                                    </Badge>
+                                </div>
+                                <CardContent className="p-4 sm:p-6 pt-12 sm:pt-16 h-full flex flex-col justify-center">
                                     <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
                                         <div className="min-w-0 max-w-md space-y-4">
                                             <div className="flex items-center gap-2 flex-wrap">
-                                                <Badge variant={getStatusDisplay(store.status, store.isActive).variant}>
-                                                    {getStatusDisplay(store.status, store.isActive).label}
-                                                </Badge>
                                                 {completeness.missing.length > 0 && completeness.missing.map(tag => (
                                                     <Badge key={tag} variant="outline" className={cn(
                                                         "border-transparent",
@@ -335,6 +350,7 @@ export default function StoreDetailPage() {
                                                     </Badge>
                                                 ))}
                                             </div>
+
                                             <div className="flex items-center gap-2 group">
                                                 <h1 className="text-3xl font-bold select-all cursor-pointer hover:text-primary transition-colors" title="Нажмите чтобы выделить">
                                                     {store.name}

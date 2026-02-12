@@ -9,6 +9,7 @@ export interface JwtPayload {
     sub: string;
     email: string;
     role: string;
+    permissions: string[];
 }
 
 export interface TokenResponse {
@@ -19,6 +20,7 @@ export interface TokenResponse {
         email: string;
         name: string;
         role: string;
+        permissions: string[];
     };
 }
 
@@ -41,16 +43,23 @@ export class AuthService {
             throw new UnauthorizedException('Аккаунт деактивирован');
         }
 
+        if (!user.role) {
+            throw new UnauthorizedException('Пользователь не имеет назначенной роли');
+        }
+
         const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
 
         if (!isPasswordValid) {
             throw new UnauthorizedException('Неверный email или пароль');
         }
 
+        const permissions = user.role.permissions.map(p => p.permission.code);
+
         const payload: JwtPayload = {
             sub: user.id,
             email: user.email,
-            role: user.role,
+            role: user.role.name,
+            permissions: permissions,
         };
 
         const accessToken = this.jwtService.sign(payload);
@@ -66,7 +75,8 @@ export class AuthService {
                 id: user.id,
                 email: user.email,
                 name: user.name,
-                role: user.role,
+                role: user.role.name,
+                permissions: permissions,
             },
         };
     }
@@ -83,10 +93,17 @@ export class AuthService {
                 throw new UnauthorizedException('Недействительный токен');
             }
 
+            if (!user.role) {
+                throw new UnauthorizedException('Пользователь не имеет назначенной роли');
+            }
+
+            const permissions = user.role.permissions.map(p => p.permission.code);
+
             const newPayload: JwtPayload = {
                 sub: user.id,
                 email: user.email,
-                role: user.role,
+                role: user.role.name,
+                permissions: permissions,
             };
 
             return {
@@ -104,6 +121,13 @@ export class AuthService {
             return null;
         }
 
-        return user;
+        // Flatten permissions for easier access in Guards
+        const permissions = user.role?.permissions.map(p => p.permission.code) || [];
+
+        return {
+            ...user,
+            role: user.role?.name,
+            permissions,
+        };
     }
 }
