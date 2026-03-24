@@ -27,7 +27,7 @@ interface GroupedStock {
     totalReserved: number;
     totalMin: number;
     available: number;
-    status: 'ok' | 'low' | 'out';
+    status: 'ok' | 'low' | 'out' | 'reserve';
 }
 
 export default function StockPage() {
@@ -82,6 +82,7 @@ export default function StockPage() {
         return Object.values(groups).map(g => {
             g.available = g.totalQuantity - g.totalReserved;
             if (g.available <= 0 && g.totalQuantity === 0) g.status = 'out';
+            else if (g.available <= 0 && g.totalReserved > 0) g.status = 'reserve';
             else if (g.available <= g.totalMin) g.status = 'low';
             else g.status = 'ok';
             return g;
@@ -102,7 +103,7 @@ export default function StockPage() {
                 g.product.sku.toLowerCase().includes(searchTerm.toLowerCase());
 
             const matchesCategory = categoryFilter === "all" || g.product.category.name === categoryFilter;
-            const matchesLow = showLowStock ? g.status === 'low' || g.status === 'out' : true;
+            const matchesLow = showLowStock ? g.status === 'low' || g.status === 'out' || g.status === 'reserve' : true;
 
             return matchesSearch && matchesCategory && matchesLow;
         });
@@ -110,7 +111,7 @@ export default function StockPage() {
 
     // Stats
     const totalProducts = groupedItmes.length;
-    const lowStockCount = groupedItmes.filter(g => g.status === 'low' || g.status === 'out').length;
+    const lowStockCount = groupedItmes.filter(g => g.status === 'low' || g.status === 'out' || g.status === 'reserve').length;
     const totalReservedGlobal = groupedItmes.reduce((acc, g) => acc + g.totalReserved, 0);
 
 
@@ -126,16 +127,16 @@ export default function StockPage() {
         <div className="p-6 h-full">
             <div className="space-y-6">
                 {/* Page Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
                         <h1 className="text-2xl font-bold">Складской учет</h1>
                         <p className="text-sm text-muted-foreground mt-1">Управление остатками и справочником моделей</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 w-full md:w-auto">
                         {hasRole(['ADMIN', 'MANAGER', 'WAREHOUSE']) && (
                             <AddProductDialog onSuccess={refetch} />
                         )}
-                        <Button variant="gradient" onClick={() => setIsAddOpen(true)}>
+                        <Button variant="gradient" onClick={() => setIsAddOpen(true)} className="flex-1 md:flex-none">
                             <Plus className="h-4 w-4" />
                             Новая позиция
                         </Button>
@@ -143,7 +144,7 @@ export default function StockPage() {
                 </div>
 
                 {/* Stats */}
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-3 grid-cols-2 md:grid-cols-3">
                     <StatCard
                         title="Всего товаров"
                         value={totalProducts.toLocaleString()}
@@ -162,23 +163,25 @@ export default function StockPage() {
                         subtitle={lowStockCount > 0 ? "требует внимания" : "всё в норме"}
                         icon={<AlertTriangle className="h-5 w-5" />}
                         status={lowStockCount > 0 ? "danger" : "success"}
+                        className="col-span-2 md:col-span-1"
                     />
                 </div>
 
                 {/* Filters */}
                 <Card>
-                    <CardContent className="p-4">
-                        <div className="flex flex-wrap gap-4 items-center">
-                            <div className="flex-1 min-w-[200px] max-w-md">
+                    <CardContent className="p-3 md:p-4">
+                        <div className="flex flex-col md:flex-row gap-3 md:items-center">
+                            <div className="w-full md:flex-1 md:max-w-md">
                                 <SearchInput
                                     placeholder="Поиск по названию или SKU..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full"
                                 />
                             </div>
-                            <div className="w-[200px]">
+                            <div className="w-full md:w-[200px]">
                                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                                    <SelectTrigger>
+                                    <SelectTrigger className="w-full">
                                         <SelectValue placeholder="Категория" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -189,26 +192,29 @@ export default function StockPage() {
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <Button
-                                variant={showLowStock ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setShowLowStock(!showLowStock)}
-                            >
-                                <Filter className="h-4 w-4" />
-                                Только низкий остаток
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                    setSearchTerm("");
-                                    setCategoryFilter("all");
-                                    setShowLowStock(false);
-                                }}
-                                className="ml-auto"
-                            >
-                                Сбросить
-                            </Button>
+                            <div className="grid grid-cols-2 gap-2 md:flex md:gap-2">
+                                <Button
+                                    variant={showLowStock ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => setShowLowStock(!showLowStock)}
+                                    className="w-full md:w-auto justify-center"
+                                >
+                                    <Filter className="h-4 w-4 mr-2" />
+                                    <span className="truncate">Низкий остаток</span>
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                        setSearchTerm("");
+                                        setCategoryFilter("all");
+                                        setShowLowStock(false);
+                                    }}
+                                    className="w-full md:w-auto md:ml-auto"
+                                >
+                                    Сбросить
+                                </Button>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
@@ -310,7 +316,7 @@ export default function StockPage() {
                                                                         }
 
                                                                         const filled = i < (percentage / 10);
-                                                                        const colorClass = group.status === 'out'
+                                                                        const colorClass = group.status === 'out' || group.status === 'reserve'
                                                                             ? 'bg-destructive shadow-[0_0_8px_rgba(239,68,68,0.6)]'
                                                                             : group.status === 'low'
                                                                                 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]'
@@ -326,13 +332,14 @@ export default function StockPage() {
                                                                     })}
                                                                 </div>
                                                                 <div className="flex flex-col min-w-[90px]">
-                                                                    <span className={`text-sm font-bold leading-none ${group.status === 'out' ? 'text-destructive' :
+                                                                    <span className={`text-sm font-bold leading-none ${group.status === 'out' || group.status === 'reserve' ? 'text-destructive' :
                                                                         group.status === 'low' ? 'text-red-500' :
                                                                             'text-emerald-500'
                                                                         }`}>
                                                                         {group.status === 'out' ? 'Нет в наличии' :
-                                                                            group.status === 'low' ? 'Мало' :
-                                                                                'В норме'}
+                                                                            group.status === 'reserve' ? 'Только резерв' :
+                                                                                group.status === 'low' ? 'Мало' :
+                                                                                    'В норме'}
                                                                     </span>
                                                                     <span className="text-[10px] text-muted-foreground font-mono mt-1">
                                                                         {group.available > 0 && group.totalMin > 0
@@ -371,7 +378,12 @@ export default function StockPage() {
                                                                     <div className="divide-y">
                                                                         {group.items.map(item => {
                                                                             const itemAvail = item.quantity - item.reserved;
-                                                                            const itemStatus = itemAvail <= item.minQuantity ? 'low' : 'ok';
+                                                                            let itemStatus: 'ok' | 'low' | 'out' | 'reserve' = 'ok';
+
+                                                                            if (item.quantity === 0) itemStatus = 'out';
+                                                                            else if (itemAvail <= 0 && item.reserved > 0) itemStatus = 'reserve';
+                                                                            else if (item.minQuantity > 0 && itemAvail <= item.minQuantity) itemStatus = 'low';
+                                                                            else itemStatus = 'ok';
                                                                             return (
                                                                                 <div key={item.id} className="p-3 text-sm grid grid-cols-6 gap-4 items-center">
                                                                                     <div className="col-span-2 font-medium flex items-center gap-2">
@@ -382,8 +394,12 @@ export default function StockPage() {
                                                                                     <div className="text-right font-mono text-warning/90">{item.reserved} шт</div>
                                                                                     <div className="text-right font-mono text-muted-foreground">{item.minQuantity} шт</div>
                                                                                     <div className="text-right">
-                                                                                        {itemStatus === 'low' ? (
-                                                                                            <span className="text-xs text-destructive font-medium bg-destructive/10 px-2 py-1 rounded">Мало</span>
+                                                                                        {itemStatus === 'out' ? (
+                                                                                            <span className="text-xs text-destructive font-medium bg-destructive/10 px-2 py-1 rounded">Нет в наличии</span>
+                                                                                        ) : itemStatus === 'reserve' ? (
+                                                                                            <span className="text-xs text-destructive font-medium bg-destructive/10 px-2 py-1 rounded">Только резерв</span>
+                                                                                        ) : itemStatus === 'low' ? (
+                                                                                            <span className="text-xs text-red-500 font-medium bg-red-500/10 px-2 py-1 rounded">Мало</span>
                                                                                         ) : (
                                                                                             <span className="text-xs text-success font-medium bg-success/10 px-2 py-1 rounded">OK</span>
                                                                                         )}

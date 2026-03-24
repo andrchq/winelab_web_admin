@@ -146,3 +146,6 @@ export const parseInvoiceFile = async (file: File): Promise<InvoiceItem[]> => {
         }
     });
 };
+
+export const SHIPPING_FILES = ".csv, .xls, .xlsx, .json, .txt";
+export const parseShippingFile = parseInvoiceFile;

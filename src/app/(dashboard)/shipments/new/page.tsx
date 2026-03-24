@@ -1,169 +1,690 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { useWarehouses, useStores } from "@/lib/hooks";
-import { shippingService } from "@/lib/shipping-service";
-import { useRouter } from "next/navigation";
-import { Loader2, ArrowRight } from "lucide-react";
+import { useProducts, useRequest, useStores, useWarehouses } from "@/lib/hooks";
+import { Truck, FileText, Upload, Check, AlertTriangle, Search, X, Loader2, Info, ChevronRight, ChevronsUpDown, Plus, MapPin, Package, CheckCircle2 } from "lucide-react";
+import { SHIPPING_FILES, parseShippingFile, InvoiceItem } from "@/lib/file-parser";
 import { toast } from "sonner";
+import { shippingService } from "@/lib/shipping-service";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from "@/components/ui/command";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { useTSDMode } from "@/contexts/TSDModeContext";
+
+type Step = "setup" | "mapping" | "review";
 
 export default function NewShipmentPage() {
     const router = useRouter();
-    const { data: warehouses, isLoading: isWarehousesLoading } = useWarehouses();
-    const { data: stores, isLoading: isStoresLoading } = useStores();
+    const searchParams = useSearchParams();
+    const { data: warehouses } = useWarehouses();
+    const { data: stores } = useStores();
+    const { data: products } = useProducts();
+    const requestId = searchParams.get("requestId") || "";
+    const presetStoreId = searchParams.get("storeId") || "";
+    const { data: request } = useRequest(requestId);
+    const { isTSDMode } = useTSDMode(); // We can keep this if needed elsewhere, but for now handleCancel won't use it.
 
-    const [warehouseId, setWarehouseId] = useState<string>("");
+    const [step, setStep] = useState<Step>("setup");
+
+    // Step 1: Setup
+    const [warehouseId, setWarehouseId] = useState("");
     const [destinationType, setDestinationType] = useState<"store" | "warehouse" | "other">("store");
-    const [destinationId, setDestinationId] = useState<string>("");
-    const [manualDestination, setManualDestination] = useState<string>("");
-    const [requestNumber, setRequestNumber] = useState<string>("");
-    const [isLoading, setIsLoading] = useState(false);
+    const [destinationId, setDestinationId] = useState(presetStoreId);
+    const [manualDestination, setManualDestination] = useState(""); // For "other" type
+    const [requestNumber, setRequestNumber] = useState(requestId ? requestId.slice(0, 8) : "");
+    const [openStoreCombobox, setOpenStoreCombobox] = useState(false);
 
-    const handleCreateSession = () => {
-        if (!warehouseId) {
-            toast.error("Выберите склад отправитель");
+    // File Upload
+    const [file, setFile] = useState<File | null>(null);
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    // Step 2: Mapping
+    const [parsedItems, setParsedItems] = useState<InvoiceItem[]>([]);
+    const [mappings, setMappings] = useState<Record<string, string>>({}); // originalName -> productId
+
+    useEffect(() => {
+        if (!request) return;
+
+        if (request.storeId) {
+            setDestinationType("store");
+            setDestinationId(request.storeId);
+        }
+
+        setRequestNumber(request.id.slice(0, 8));
+
+        if (!request.items?.length) {
             return;
         }
 
-        let finalDestination = "";
-        if (destinationType === 'store') {
-            const store = stores?.find(s => s.id.toString() === destinationId);
-            finalDestination = store ? store.name : "Unknown Store";
-        } else if (destinationType === 'warehouse') {
-            const warehouse = warehouses?.find(w => w.id === destinationId);
-            finalDestination = warehouse ? warehouse.name : "Unknown Warehouse";
-        } else {
-            finalDestination = manualDestination;
-        }
+        const groupedItems = request.items.reduce((acc, item) => {
+            const productId = item.asset?.product?.id;
+            const originalName = item.asset?.product?.name;
+            const sku = item.asset?.product?.sku || "";
 
-        if (!finalDestination) {
-            toast.error("Укажите получателя");
-            return;
-        }
+            if (!productId || !originalName) {
+                return acc;
+            }
 
-        setIsLoading(true);
+            const existing = acc.find((entry) => entry.productId === productId);
+            if (existing) {
+                existing.quantity += 1;
+                return acc;
+            }
+
+            acc.push({
+                productId,
+                originalName,
+                sku,
+                quantity: 1,
+            });
+            return acc;
+        }, [] as { productId: string; originalName: string; sku: string; quantity: number }[]);
+
+        setParsedItems(
+            groupedItems.map((item, index) => ({
+                id: `request-item-${index}`,
+                originalName: item.originalName,
+                quantity: item.quantity,
+                sku: item.sku,
+            })),
+        );
+
+        setMappings(
+            groupedItems.reduce((acc, item) => {
+                acc[item.originalName] = item.productId;
+                return acc;
+            }, {} as Record<string, string>),
+        );
+    }, [request]);
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setFile(file);
+    };
+
+    const handleNext = async () => {
+        if (step === "setup") {
+            if (!warehouseId) {
+                toast.error("Выберите склад отправитель");
+                return;
+            }
+            if (!destinationType) {
+                toast.error("Выберите тип получателя");
+                return;
+            }
+            if (destinationType === 'store' && !destinationId) {
+                toast.error("Выберите магазин");
+                return;
+            }
+            if (destinationType === 'warehouse' && !destinationId) {
+                toast.error("Выберите склад получатель");
+                return;
+            }
+            if (destinationType === 'other' && !manualDestination) {
+                toast.error("Укажите получателя");
+                return;
+            }
+
+            if (file) {
+                setIsProcessing(true);
+                try {
+                    const items = await parseShippingFile(file);
+                    setParsedItems(items);
+
+                    // Auto-mapping
+                    const newMappings: Record<string, string> = {};
+                    items.forEach(item => {
+                        // 1. Try exact SKU match
+                        if (item.sku) {
+                            const exactSku = products?.find(p => p.sku === item.sku);
+                            if (exactSku) {
+                                newMappings[item.originalName] = exactSku.id;
+                                return;
+                            }
+                        }
+                        // 2. Try exact name match
+                        const exactName = products?.find(p => p.name.toLowerCase() === item.originalName.toLowerCase());
+                        if (exactName) {
+                            newMappings[item.originalName] = exactName.id;
+                        }
+                    });
+                    setMappings(newMappings);
+                    setStep("mapping");
+                } catch (e: any) {
+                    toast.error(`Ошибка чтения файла: ${e.message}`);
+                    setFile(null);
+                } finally {
+                    setIsProcessing(false);
+                }
+            } else {
+                // If no file, go straight to creation (manual mode)
+                handleCreateManual();
+            }
+        } else if (step === "mapping") {
+            // Check if there are unmapped items
+            const unmappedCount = parsedItems.length - Object.keys(mappings).length;
+            if (unmappedCount > 0) {
+                if (!confirm(`У вас осталось ${unmappedCount} нераспознанных позиций. Они будут пропущены. Продолжить?`)) {
+                    return;
+                }
+            }
+            setStep("review");
+        }
+    };
+
+    const handleCancel = () => {
+        router.push('/shipments');
+    };
+
+    const getDestinationName = () => {
+        if (destinationType === 'store') return stores?.find(s => s.id === destinationId)?.name || 'Магазин';
+        if (destinationType === 'warehouse') return warehouses?.find(w => w.id === destinationId)?.name || 'Склад';
+        return manualDestination;
+    };
+
+    const handleCreateManual = async () => {
         try {
-            const session = shippingService.create({
+            const requestItems = request?.items?.reduce((acc, item) => {
+                const productId = item.asset?.product?.id;
+                const originalName = item.asset?.product?.name;
+                const sku = item.asset?.product?.sku || "";
+
+                if (!productId || !originalName) {
+                    return acc;
+                }
+
+                const existing = acc.find((entry) => entry.productId === productId);
+                if (existing) {
+                    existing.quantity += 1;
+                    existing.expectedQuantity += 1;
+                    return acc;
+                }
+
+                acc.push({
+                    id: `${productId}-${acc.length}`,
+                    productId,
+                    quantity: 1,
+                    expectedQuantity: 1,
+                    scannedQuantity: 0,
+                    originalName,
+                    sku,
+                    scans: [],
+                });
+                return acc;
+            }, [] as {
+                id: string;
+                productId: string;
+                quantity: number;
+                expectedQuantity: number;
+                scannedQuantity: number;
+                originalName: string;
+                sku: string;
+                scans: never[];
+            }[]) || [];
+
+            const session = await shippingService.create({
+                requestId: request?.id,
                 warehouseId,
-                destination: finalDestination,
-                items: [], // Start empty, add items in detail view
-                requestNumber,
-                type: requestNumber ? 'request' : 'manual'
+                destination: getDestinationName(),
+                destinationType,
+                destinationId: destinationType !== 'other' ? destinationId : undefined,
+                items: requestItems,
+                requestNumber: requestNumber || undefined,
+                invoiceNumber: undefined,
+                type: 'manual'
             });
             toast.success("Сессия отгрузки создана");
             router.push(`/shipments/${session.id}`);
         } catch (e) {
             console.error(e);
             toast.error("Ошибка при создании сессии");
-            setIsLoading(false);
         }
     };
 
+    const handleFinish = async () => {
+        try {
+            const itemsForSession = parsedItems
+                .filter(item => mappings[item.originalName])
+                .map(item => {
+                    const productId = mappings[item.originalName];
+                    const product = products?.find(p => p.id === productId);
+                    return {
+                        id: Math.random().toString(36).substr(2, 9),
+                        productId,
+                        quantity: item.quantity,
+                        expectedQuantity: item.quantity,
+                        scannedQuantity: 0,
+                        originalName: item.originalName,
+                        sku: product?.sku || item.sku || '',
+                        scans: []
+                    };
+                });
+
+            const session = await shippingService.create({
+                requestId: request?.id,
+                warehouseId,
+                destination: getDestinationName(),
+                destinationType,
+                destinationId: destinationType !== 'other' ? destinationId : undefined,
+                items: itemsForSession,
+                requestNumber: requestNumber || undefined,
+                invoiceNumber: file?.name,
+                type: 'file'
+            });
+            toast.success("Сессия отгрузки создана");
+            router.push(`/shipments/${session.id}`);
+        } catch (e) {
+            console.error(e);
+            toast.error("Ошибка при создании сессии");
+        }
+    };
+
+    const isFormValid = useMemo(() => {
+        if (!warehouseId) return false;
+        if (!destinationType) return false;
+
+        if (destinationType === 'store' && !destinationId) return false;
+        if (destinationType === 'warehouse' && !destinationId) return false;
+        if (destinationType === 'other' && !manualDestination) return false;
+
+        return true;
+    }, [warehouseId, destinationType, destinationId, manualDestination]);
+
     return (
-        <div className="h-full bg-background p-4 md:p-6 flex items-center justify-center">
-            <Card className="w-full max-w-lg">
-                <CardHeader>
-                    <CardTitle>Новая отгрузка</CardTitle>
-                    <CardDescription>Создание новой сессии сбора и отправки.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                        <Label>Склад отправитель</Label>
-                        <Select value={warehouseId} onValueChange={setWarehouseId}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Выберите склад" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {warehouses?.map(w => (
-                                    <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
+        <div className="h-full bg-background p-2 md:p-6">
+            <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
 
-                    <div className="space-y-2">
-                        <Label>Тип получателя</Label>
-                        <Select value={destinationType} onValueChange={(v: "store" | "warehouse" | "other") => {
-                            setDestinationType(v);
-                            setDestinationId("");
-                            setManualDestination("");
-                        }}>
-                            <SelectTrigger>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="store">Магазин</SelectItem>
-                                <SelectItem value="warehouse">Другой склад</SelectItem>
-                                <SelectItem value="other">Другое</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {destinationType === 'store' && (
-                        <div className="space-y-2">
-                            <Label>Магазин</Label>
-                            <Select value={destinationId} onValueChange={setDestinationId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Выберите магазин" />
-                                </SelectTrigger>
-                                <SelectContent className="max-h-[200px]">
-                                    {stores?.map(s => (
-                                        <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                {/* Stepper */}
+                <div className="flex items-center justify-between mb-4 md:mb-8">
+                    <div className="flex items-center gap-2 md:gap-4 w-full text-xs md:text-base">
+                        <div className={`flex items-center gap-1 md:gap-2 ${step === 'setup' ? 'text-primary font-bold' : 'text-green-600'}`}>
+                            <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center border ${step === 'setup' ? 'border-primary bg-primary/10' : 'border-green-500 bg-green-500/10'}`}>
+                                {step !== 'setup' ? <Check className="h-3 w-3" /> : '1'}
+                            </div>
+                            <span className="hidden sm:inline">Настройка</span>
                         </div>
-                    )}
-
-                    {destinationType === 'warehouse' && (
-                        <div className="space-y-2">
-                            <Label>Склад получатель</Label>
-                            <Select value={destinationId} onValueChange={setDestinationId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Выберите склад" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {warehouses?.filter(w => w.id !== warehouseId).map(w => (
-                                        <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                        <div className="h-[1px] bg-border flex-1" />
+                        <div className={`flex items-center gap-1 md:gap-2 ${step === 'mapping' ? 'text-primary font-bold' : step === 'review' ? 'text-green-600' : 'text-muted-foreground'}`}>
+                            <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center border ${step === 'mapping' ? 'border-primary bg-primary/10' : step === 'review' ? 'border-green-500 bg-green-500/10' : 'border-border'}`}>
+                                {step === 'review' ? <Check className="h-3 w-3" /> : '2'}
+                            </div>
+                            <span className="hidden sm:inline">Маппинг</span>
                         </div>
-                    )}
-
-                    {destinationType === 'other' && (
-                        <div className="space-y-2">
-                            <Label>Получатель (название)</Label>
-                            <Input
-                                placeholder="Введите название получателя"
-                                value={manualDestination}
-                                onChange={e => setManualDestination(e.target.value)}
-                            />
+                        <div className="h-[1px] bg-border flex-1" />
+                        <div className={`flex items-center gap-1 md:gap-2 ${step === 'review' ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
+                            <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center border ${step === 'review' ? 'border-primary bg-primary/10' : 'border-border'}`}>3</div>
+                            <span className="hidden sm:inline">Проверка</span>
                         </div>
-                    )}
-
-                    <div className="space-y-2">
-                        <Label>Номер заявки (необязательно)</Label>
-                        <Input
-                            placeholder="Например, REQ-12345"
-                            value={requestNumber}
-                            onChange={e => setRequestNumber(e.target.value)}
-                        />
                     </div>
-                </CardContent>
-                <CardFooter className="flex justify-between">
-                    <Button variant="ghost" onClick={() => router.back()}>Отмена</Button>
-                    <Button onClick={handleCreateSession} disabled={isLoading || !warehouseId || (destinationType !== 'other' && !destinationId) || (destinationType === 'other' && !manualDestination)}>
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />}
-                        Создать
-                    </Button>
-                </CardFooter>
-            </Card>
+                </div>
+
+                {/* Step 1: Setup */}
+                {step === "setup" && (
+                    <Card className="border-0 shadow-none md:border md:shadow-sm">
+                        <CardHeader className="px-2 md:px-6">
+                            <CardTitle className="flex items-center gap-2">
+                                <Truck className="h-5 w-5 text-primary" />
+                                Новая отгрузка
+                            </CardTitle>
+                            <CardDescription>Выберите склад, получателя и загрузите заявку или создайте без файла.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4 md:space-y-6 px-2 md:px-6">
+                            {/* Warehouse */}
+                            <div className="space-y-2">
+                                <Label>Склад отправитель</Label>
+                                <Select value={warehouseId} onValueChange={setWarehouseId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Выберите склад" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {warehouses?.map(w => (
+                                            <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Destination Type */}
+                            <div className="space-y-2">
+                                <Label>Тип получателя</Label>
+                                <Select value={destinationType} onValueChange={(v: "store" | "warehouse" | "other") => {
+                                    setDestinationType(v);
+                                    setDestinationId(v === "store" && request?.storeId ? request.storeId : "");
+                                    setManualDestination("");
+                                }}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="store">Магазин</SelectItem>
+                                        <SelectItem value="warehouse">Другой склад</SelectItem>
+                                        <SelectItem value="other">Другое</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Destination Selection */}
+                            {destinationType === 'store' && (
+                                <div className="space-y-2">
+                                    <Label>Магазин</Label>
+                                    <Popover open={openStoreCombobox} onOpenChange={setOpenStoreCombobox}>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                role="combobox"
+                                                aria-expanded={openStoreCombobox}
+                                                className="w-full justify-between font-normal text-left h-10 px-3"
+                                            >
+                                                {destinationId
+                                                    ? stores?.find((store) => store.id === destinationId)?.name
+                                                    : "Выберите магазин..."}
+                                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                            <Command>
+                                                <CommandInput placeholder="Поиск магазина (название или номер)..." />
+                                                <CommandList>
+                                                    <CommandEmpty>Магазин не найден.</CommandEmpty>
+                                                    <CommandGroup>
+                                                        {stores?.map((store) => (
+                                                            <CommandItem
+                                                                key={store.id}
+                                                                value={`${store.name} ${store.id}`} // Search by both name and id (if needed) or just name if it contains number
+                                                                onSelect={() => {
+                                                                    setDestinationId(store.id);
+                                                                    setOpenStoreCombobox(false);
+                                                                }}
+                                                            >
+                                                                <Check
+                                                                    className={cn(
+                                                                        "mr-2 h-4 w-4",
+                                                                        destinationId === store.id ? "opacity-100" : "opacity-0"
+                                                                    )}
+                                                                />
+                                                                {store.name}
+                                                            </CommandItem>
+                                                        ))}
+                                                    </CommandGroup>
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
+                            )}
+
+                            {destinationType === 'warehouse' && (
+                                <div className="space-y-2">
+                                    <Label>Склад получатель</Label>
+                                    <Select value={destinationId} onValueChange={setDestinationId}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Выберите склад" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {warehouses?.filter(w => w.id !== warehouseId).map(w => (
+                                                <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+
+                            {destinationType === 'other' && (
+                                <div className="space-y-2">
+                                    <Label>Название получателя</Label>
+                                    <Input
+                                        placeholder="Например: Офис"
+                                        value={manualDestination}
+                                        onChange={e => setManualDestination(e.target.value)}
+                                    />
+                                </div>
+                            )}
+
+                            {/* Request Number */}
+                            <div className="space-y-2">
+                                <Label>Номер заявки (необязательно)</Label>
+                                <Input
+                                    placeholder="Например, REQ-12345"
+                                    value={requestNumber}
+                                    onChange={e => setRequestNumber(e.target.value)}
+                                    disabled={Boolean(requestId)}
+                                />
+                            </div>
+
+                            {/* File Upload */}
+                            <div className="space-y-2 pt-2 md:pt-4 border-t">
+                                <Label className="text-base font-medium">Файл заявки</Label>
+                                <div className="border-2 border-dashed rounded-xl p-4 md:p-8 text-center hover:bg-muted/50 transition-colors relative">
+                                    <input
+                                        type="file"
+                                        accept={SHIPPING_FILES}
+                                        onChange={handleFileUpload}
+                                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                    />
+                                    <div className="flex flex-col items-center gap-2 md:gap-3 pointer-events-none">
+                                        <div className="p-3 md:p-4 rounded-full bg-primary/10 text-primary">
+                                            <Upload className="h-6 w-6 md:h-8 md:w-8" />
+                                        </div>
+                                        <div className="text-sm md:text-base font-medium">
+                                            {file ? file.name : "Нажмите для загрузки файла"}
+                                        </div>
+                                        {!file && (
+                                            <div className="text-xs md:text-sm text-muted-foreground">
+                                                Excel, CSV или JSON
+                                            </div>
+                                        )}
+                                    </div>
+                                    {file && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="absolute top-2 right-2 z-10 hover:text-destructive"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                e.preventDefault();
+                                                setFile(null);
+                                            }}
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        </CardContent>
+                        <CardFooter className="px-2 md:px-6 flex flex-col md:flex-row gap-3">
+                            <Button
+                                className="w-full md:w-auto h-10 md:h-12 order-3 md:order-1"
+                                variant="ghost"
+                                onClick={handleCancel}
+                            >
+                                Отмена
+                            </Button>
+                            <Button
+                                className="w-full md:w-1/2 h-10 md:h-12 order-2"
+                                variant="outline"
+                                onClick={handleCreateManual}
+                                disabled={isProcessing || !isFormValid}
+                            >
+                                <Plus className="mr-2 h-4 w-4" />
+                                Оформить без файла
+                            </Button>
+                            <Button
+                                className="w-full md:w-1/2 h-10 md:h-12 order-1 md:order-3"
+                                onClick={handleNext}
+                                disabled={isProcessing || !isFormValid}
+                            >
+                                {isProcessing ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Обработка...
+                                    </>
+                                ) : (
+                                    <>
+                                        Далее
+                                        <ChevronRight className="ml-2 h-4 w-4" />
+                                    </>
+                                )}
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                )}
+
+                {/* Step 2: Mapping */}
+                {step === "mapping" && (
+                    <Card className="border-0 shadow-none md:border md:shadow-sm">
+                        <CardHeader className="px-2 md:px-6">
+                            <CardTitle>Сопоставление товаров</CardTitle>
+                            <CardDescription>
+                                Мы нашли {parsedItems.length} позиций. Пожалуйста, сопоставьте их с каталогом.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4 px-2 md:px-6">
+                            <div className="hidden md:grid grid-cols-12 gap-4 text-sm font-medium text-muted-foreground pb-2 border-b">
+                                <div className="col-span-5">Из файла</div>
+                                <div className="col-span-2 text-center">Кол-во</div>
+                                <div className="col-span-5">В каталоге</div>
+                            </div>
+
+                            <div className="space-y-4 md:space-y-2 max-h-[60vh] overflow-y-auto pr-2">
+                                {parsedItems.map((item, i) => {
+                                    const isMapped = !!mappings[item.originalName];
+                                    return (
+                                        <div key={i} className={`flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-4 p-3 rounded-lg border ${!isMapped ? 'bg-orange-50/50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-800' : 'bg-card'}`}>
+                                            <div className="col-span-5 flex flex-col justify-center">
+                                                <div className="font-medium text-sm">{item.originalName}</div>
+                                                {item.sku && <div className="text-xs text-muted-foreground font-mono">{item.sku}</div>}
+                                            </div>
+                                            <div className="col-span-2 flex items-center justify-between md:justify-center border-t md:border-0 pt-2 md:pt-0">
+                                                <span className="md:hidden text-xs text-muted-foreground">Кол-во:</span>
+                                                <Badge variant="secondary">{item.quantity} шт</Badge>
+                                            </div>
+                                            <div className="col-span-5 pt-2 md:pt-0">
+                                                <Select
+                                                    value={mappings[item.originalName] || ""}
+                                                    onValueChange={(val) => setMappings(prev => ({ ...prev, [item.originalName]: val }))}
+                                                >
+                                                    <SelectTrigger className={`h-9 ${!isMapped ? 'border-orange-300 dark:border-orange-700' : 'border-green-200 dark:border-green-800'}`}>
+                                                        <SelectValue placeholder="Выберите товар..." />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {products?.map(p => (
+                                                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </CardContent>
+                        <CardFooter className="px-2 md:px-6 flex justify-between">
+                            <Button variant="ghost" onClick={() => setStep("setup")}>Назад</Button>
+                            <Button onClick={handleNext}>
+                                Далее <ChevronRight className="ml-2 h-4 w-4" />
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                )}
+
+                {/* Step 3: Review */}
+                {step === "review" && (
+                    <Card className="border-0 shadow-none md:border md:shadow-sm">
+                        <CardHeader className="px-2 md:px-6">
+                            <CardTitle>Проверка данных</CardTitle>
+                            <CardDescription>Проверьте информацию перед созданием сессии</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6 px-2 md:px-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-1">
+                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Откуда</Label>
+                                    <div className="font-medium text-lg">{warehouses?.find(w => w.id === warehouseId)?.name}</div>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Куда</Label>
+                                    <div className="font-medium text-lg flex items-center gap-2">
+                                        <MapPin className="h-4 w-4 text-primary" />
+                                        {getDestinationName()}
+                                    </div>
+                                    <div className="text-sm text-muted-foreground">
+                                        {destinationType === 'store' ? 'Магазин' : destinationType === 'warehouse' ? 'Склад' : 'Прочее'}
+                                    </div>
+                                </div>
+                                {requestNumber && (
+                                    <div className="space-y-1">
+                                        <Label className="text-xs text-muted-foreground uppercase tracking-wider">Номер заявки</Label>
+                                        <div className="font-medium">{requestNumber}</div>
+                                    </div>
+                                )}
+                                <div className="space-y-1">
+                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Файл</Label>
+                                    <div className="font-medium flex items-center gap-2">
+                                        <FileText className="h-4 w-4" />
+                                        {file ? file.name : "Без файла (ручной сбор)"}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {file && (
+                                <div className="rounded-lg border bg-muted/20 p-4">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h4 className="font-bold flex items-center gap-2">
+                                            <Package className="h-4 w-4" />
+                                            Товары
+                                        </h4>
+                                        <Badge>{Object.keys(mappings).length} позиций</Badge>
+                                    </div>
+                                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                                        {parsedItems
+                                            .filter(item => mappings[item.originalName])
+                                            .map((item, i) => (
+                                                <div key={i} className="flex justify-between text-sm py-1 border-b border-border/50 last:border-0">
+                                                    <span className="truncate pr-4">{item.originalName}</span>
+                                                    <span className="font-mono">{item.quantity} шт</span>
+                                                </div>
+                                            ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {!file && (
+                                <div className="p-4 rounded-lg bg-orange-50 border border-orange-200 text-orange-800 flex items-start gap-3">
+                                    <Info className="h-5 w-5 shrink-0" />
+                                    <div className="text-sm">
+                                        Вы создаете пустую отгрузку. Товары нужно будет добавлять вручную сканированием или поиском по каталогу.
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                        <CardFooter className="px-2 md:px-6 flex justify-between">
+                            <Button variant="ghost" onClick={() => setStep("mapping")}>Назад</Button>
+                            <Button onClick={handleFinish} className="bg-green-600 hover:bg-green-700 text-white">
+                                <CheckCircle2 className="mr-2 h-4 w-4" />
+                                Создать отгрузку
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                )}
+            </div>
         </div>
     );
 }

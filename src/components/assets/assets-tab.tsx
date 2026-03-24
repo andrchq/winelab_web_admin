@@ -1,6 +1,6 @@
 "use client";
 
-import { Boxes, Filter, QrCode, MapPin, Wrench, AlertCircle, HardDrive, CheckCircle2, Truck } from "lucide-react";
+import { Boxes, Filter, QrCode, MapPin, Wrench, AlertCircle, HardDrive, CheckCircle2, Truck, History } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, StatCard } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/input";
@@ -9,13 +9,20 @@ import { useAssets } from "@/lib/hooks";
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AddAssetDialog } from "@/components/assets/add-asset-dialog";
+import { EditAssetDialog } from "@/components/assets/edit-asset-dialog";
 import { cn } from "@/lib/utils";
 import { Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Asset } from "@/types/api";
+import { Check, ChevronsUpDown, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/contexts/AuthContext";
 
 const processStatusMap: Record<string, { label: string; variant: "default" | "success" | "warning" | "destructive" | "secondary" | "info" }> = {
     AVAILABLE: { label: "Свободно", variant: "success" },
@@ -25,17 +32,31 @@ const processStatusMap: Record<string, { label: string; variant: "default" | "su
     INSTALLED: { label: "Установлено", variant: "success" },
 };
 
-const conditionMap: Record<string, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
+const conditionMap: Record<string, { label: string; variant: "success" | "warning" | "destructive" | "secondary" | "default" | "outline" }> = {
     WORKING: { label: "Рабочее", variant: "success" },
     NEEDS_REPAIR: { label: "Требует ремонта", variant: "warning" },
-    IN_REPAIR: { label: "В ремонте", variant: "destructive" },
-    BROKEN: { label: "Сломано", variant: "destructive" },
-    DECOMMISSIONED: { label: "Списано", variant: "secondary" },
+    IN_REPAIR: { label: "В ремонте", variant: "default" }, // purple-ish usually default or custom
+    UNKNOWN: { label: "Неизвестно", variant: "secondary" },
+    DECOMMISSIONED: { label: "Списано", variant: "outline" },
 };
 
-export function AssetsTab() {
+interface AssetsTabProps {
+    onStartInventory?: () => void;
+    onShowHistory?: () => void;
+}
+
+export function AssetsTab({ onStartInventory, onShowHistory }: AssetsTabProps) {
     const { data: assets, isLoading, error, refetch } = useAssets();
+    const { hasRole } = useAuth();
+    const router = useRouter();
+
+    // Filters State
     const [search, setSearch] = useState("");
+    const [selectedModels, setSelectedModels] = useState<string[]>([]);
+    const [statusFilter, setStatusFilter] = useState<string>("all");
+    const [installFilter, setInstallFilter] = useState<string>("all"); // all, installed, not_installed
+    const [openModel, setOpenModel] = useState(false);
+
     const [deleteItem, setDeleteItem] = useState<Asset | null>(null);
 
     // Compute stats from real data
@@ -43,19 +64,49 @@ export function AssetsTab() {
         const available = assets.filter(a => a.processStatus === 'AVAILABLE').length;
         const installed = assets.filter(a => a.processStatus === 'INSTALLED').length;
         const inTransit = assets.filter(a => a.processStatus === 'IN_TRANSIT').length;
-        const repair = assets.filter(a => a.condition === 'REPAIR').length;
+        const repair = assets.filter(a => a.condition === 'IN_REPAIR' || a.condition === 'NEEDS_REPAIR').length;
         return { available, installed, inTransit, repair };
     }, [assets]);
 
-    // Filter assets by search
+    // Derived Data
+    const uniqueModels = useMemo(() => {
+        const models = new Set(assets.map(a => a.product?.name).filter((n): n is string => Boolean(n)));
+        return Array.from(models).sort();
+    }, [assets]);
+
+    // Filter assets
     const filteredAssets = useMemo(() => {
-        if (!search) return assets;
-        const s = search.toLowerCase();
-        return assets.filter(a =>
-            a.serialNumber.toLowerCase().includes(s) ||
-            a.product?.name?.toLowerCase().includes(s)
-        );
-    }, [assets, search]);
+        return assets.filter(a => {
+            // 1. Search
+            if (search) {
+                const s = search.toLowerCase();
+                if (!a.serialNumber.toLowerCase().includes(s) && !a.product?.name?.toLowerCase().includes(s)) {
+                    return false;
+                }
+            }
+
+            // 2. Models (Multi-select)
+            if (selectedModels.length > 0) {
+                if (!a.product?.name || !selectedModels.includes(a.product.name)) {
+                    return false;
+                }
+            }
+
+            // 3. Status
+            if (statusFilter !== "all") {
+                if (a.processStatus !== statusFilter) return false;
+            }
+
+            // 4. Installed / Not Installed
+            if (installFilter !== "all") {
+                const isInstalled = a.processStatus === 'INSTALLED';
+                if (installFilter === 'installed' && !isInstalled) return false;
+                if (installFilter === 'not_installed' && isInstalled) return false;
+            }
+
+            return true;
+        });
+    }, [assets, search, selectedModels, statusFilter, installFilter]);
 
     const confirmDelete = async () => {
         if (!deleteItem) return;
@@ -72,22 +123,37 @@ export function AssetsTab() {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <h2 className="text-lg font-semibold">Список оборудования</h2>
-                    <p className="text-sm text-muted-foreground">Учёт оборудования по серийным номерам</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" className="w-full sm:w-auto">
-                        <QrCode className="h-4 w-4 mr-2" />
-                        Сканировать SN
+            {/* Header removed as per request */}
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
+                <div className="grid grid-cols-2 gap-3 w-full md:w-auto md:flex md:items-center md:gap-2">
+                    <Button
+                        variant="outline"
+                        className="w-full md:w-auto h-12 md:h-10 px-2"
+                        onClick={() => {
+                            if (onStartInventory) {
+                                onStartInventory();
+                            } else {
+                                toast.info("Функционал инвентаризации в разработке");
+                            }
+                        }}
+                    >
+                        <QrCode className="h-4 w-4 mr-2 shrink-0" />
+                        <span className="truncate">Начать</span>
                     </Button>
-                    <AddAssetDialog />
+                    <Button
+                        variant="outline"
+                        className="w-full md:w-auto h-12 md:h-10"
+                        onClick={onShowHistory}
+                    >
+                        <History className="h-4 w-4 mr-2 shrink-0" />
+                        <span className="truncate">История</span>
+                    </Button>
+                    {/* Add Asset button removed */}
                 </div>
             </div>
 
             {/* Stats */}
-            <div className="grid gap-4 md:grid-cols-4 animate-stagger">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4 animate-stagger">
                 <StatCard
                     title="Свободно"
                     value={stats.available.toString()}
@@ -117,18 +183,99 @@ export function AssetsTab() {
             {/* Filters */}
             <Card>
                 <CardContent className="p-4">
-                    <div className="flex flex-wrap gap-4 items-center">
-                        <div className="flex-1 min-w-[200px] max-w-md">
+                    <div className="flex flex-col xl:flex-row gap-4">
+                        <div className="flex-1 min-w-[200px]">
                             <SearchInput
                                 placeholder="Поиск по серийному номеру..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
                         </div>
-                        <Button variant="outline" size="sm">
-                            <Filter className="h-4 w-4" />
-                            Фильтры
-                        </Button>
+
+                        {/* Filters Group */}
+                        <div className="flex flex-wrap gap-2 items-center">
+                            {/* Model Multi-Select */}
+                            <Popover open={openModel} onOpenChange={setOpenModel}>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" role="combobox" aria-expanded={openModel} className="min-w-[180px] justify-between">
+                                        {selectedModels.length === 0
+                                            ? "Модель"
+                                            : `Выбрано: ${selectedModels.length}`}
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[250px] p-0">
+                                    <Command>
+                                        <CommandInput placeholder="Поиск модели..." />
+                                        <CommandList>
+                                            <CommandEmpty>Модель не найдена.</CommandEmpty>
+                                            <CommandGroup>
+                                                {uniqueModels.map((model) => (
+                                                    <CommandItem
+                                                        key={model}
+                                                        value={model}
+                                                        onSelect={() => {
+                                                            setSelectedModels(prev =>
+                                                                prev.includes(model)
+                                                                    ? prev.filter(m => m !== model)
+                                                                    : [...prev, model]
+                                                            );
+                                                        }}
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                "mr-2 h-4 w-4",
+                                                                selectedModels.includes(model) ? "opacity-100" : "opacity-0"
+                                                            )}
+                                                        />
+                                                        {model}
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
+
+                            {/* Status Filter */}
+                            <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="Статус" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Все статусы</SelectItem>
+                                    {Object.entries(processStatusMap).map(([key, { label }]) => (
+                                        <SelectItem key={key} value={key}>{label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            {/* Installation Filter */}
+                            <Select value={installFilter} onValueChange={setInstallFilter}>
+                                <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="Установка" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Все</SelectItem>
+                                    <SelectItem value="installed">Установлено</SelectItem>
+                                    <SelectItem value="not_installed">Не установлено</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                    setSearch("");
+                                    setSelectedModels([]);
+                                    setStatusFilter("all");
+                                    setInstallFilter("all");
+                                }}
+                                title="Сбросить фильтры"
+                            >
+                                <X className="h-4 w-4" />
+                            </Button>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
@@ -180,13 +327,14 @@ export function AssetsTab() {
                                     {filteredAssets.map((asset, index) => (
                                         <tr
                                             key={asset.id}
-                                            className="animate-fade-in group"
+                                            className="animate-fade-in group cursor-pointer hover:bg-muted/50"
                                             style={{ animationDelay: `${index * 20}ms` }}
+                                            onClick={() => router.push(`/assets/${asset.id}`)}
                                         >
                                             <td>
-                                                <Link href={`/assets/${asset.id}`} className="font-mono text-sm font-medium text-primary hover:underline">
+                                                <span className="font-mono text-sm font-medium text-primary">
                                                     {asset.serialNumber}
-                                                </Link>
+                                                </span>
                                             </td>
                                             <td className="font-medium">{asset.product?.name || '-'}</td>
                                             <td className="text-muted-foreground text-sm">
@@ -196,25 +344,27 @@ export function AssetsTab() {
                                                 </div>
                                             </td>
                                             <td>
-                                                <Badge variant={processStatusMap[asset.processStatus]?.variant || "secondary"} dot>
+                                                <Badge variant={processStatusMap[asset.processStatus]?.variant || "secondary"}>
                                                     {processStatusMap[asset.processStatus]?.label || asset.processStatus}
                                                 </Badge>
                                             </td>
                                             <td>
-                                                <Badge variant={conditionMap[asset.condition]?.variant || "secondary"} size="sm">
+                                                <Badge variant={conditionMap[asset.condition]?.variant || "secondary"} className="cursor-pointer">
                                                     {conditionMap[asset.condition]?.label || asset.condition}
                                                 </Badge>
                                             </td>
                                             <td>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-8 w-8 p-0"
-                                                    onClick={() => setDeleteItem(asset)}
-                                                    title="Удалить"
-                                                >
-                                                    <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive transition-colors" />
-                                                </Button>
+                                                {hasRole(['ADMIN', 'MANAGER']) && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0"
+                                                        onClick={(e) => { e.stopPropagation(); setDeleteItem(asset); }}
+                                                        title="Удалить"
+                                                    >
+                                                        <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive transition-colors" />
+                                                    </Button>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
@@ -224,6 +374,8 @@ export function AssetsTab() {
                     )}
                 </CardContent>
             </Card>
+
+
 
             <Dialog open={!!deleteItem} onOpenChange={(open) => !open && setDeleteItem(null)}>
                 <DialogContent>

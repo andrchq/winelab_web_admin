@@ -6,12 +6,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, StatCard } f
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useStores } from "@/lib/hooks";
+import { useStores, useCategories } from "@/lib/hooks";
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ImportStoresDialog } from "@/components/stores/import-stores-dialog";
 import { CreateStoreDialog } from "@/components/stores/create-store-dialog";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { StoreStatus, StoreEquipment } from "@/types/api";
 import { cn } from "@/lib/utils";
 import { getMissingEquipment } from "@/lib/equipment-categories";
@@ -40,7 +46,7 @@ const getStatusDisplay = (status?: StoreStatus, isActive?: boolean) => {
 };
 
 // Completeness Logic
-const checkStoreCompleteness = (store: any) => {
+const checkStoreCompleteness = (store: any, categories: any[]) => {
     const missingMandatory: string[] = [];
     const missingRecommended: string[] = [];
 
@@ -56,7 +62,7 @@ const checkStoreCompleteness = (store: any) => {
 
     // Check for missing mandatory equipment
     const storeEquipment: StoreEquipment[] = store.equipment || [];
-    const missingEquipment = getMissingEquipment(storeEquipment);
+    const missingEquipment = getMissingEquipment(storeEquipment, categories);
     if (missingEquipment.length > 0) {
         // Add a summary indicator instead of listing all 14 items
         missingMandatory.push(`Оборуд. (${missingEquipment.length})`);
@@ -69,16 +75,19 @@ const checkStoreCompleteness = (store: any) => {
     if (!store.kpp) missingRecommended.push("КПП");
 
     if (missingMandatory.length > 0) {
-        return { status: 'error', missing: missingMandatory };
+        // Проверяем, являются ли все ошибки только по оборудованию
+        const isOnlyEquipment = missingMandatory.every(m => m.startsWith("Оборуд."));
+        return { status: 'error', missing: missingMandatory, isOnlyEquipment };
     }
     if (missingRecommended.length > 0) {
-        return { status: 'warning', missing: missingRecommended };
+        return { status: 'warning', missing: missingRecommended, isOnlyEquipment: false };
     }
-    return { status: 'complete', missing: [] };
+    return { status: 'complete', missing: [], isOnlyEquipment: false };
 };
 
 export default function StoresPage() {
     const { data: stores, isLoading, error } = useStores();
+    const { data: categories } = useCategories();
     const [search, setSearch] = useState("");
     const [regionFilter, setRegionFilter] = useState<string>("all");
     const [statusFilter, setStatusFilter] = useState<StoreStatus | "ALL">("ALL");
@@ -141,13 +150,16 @@ export default function StoresPage() {
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <ImportStoresDialog onSuccess={() => window.location.reload()} />
+                        <ImportStoresDialog
+                            onSuccess={() => window.location.reload()}
+                            existingStores={stores}
+                        />
                         <CreateStoreDialog onSuccess={() => window.location.reload()} />
                     </div>
                 </div>
 
                 {/* Stats */}
-                <div className="grid gap-4 md:grid-cols-4 animate-stagger">
+                <div className="grid gap-3 grid-cols-2 md:grid-cols-4 animate-stagger">
                     <StatCard
                         title="Открытые"
                         value={stats.open.toString()}
@@ -290,107 +302,171 @@ export default function StoresPage() {
                         <p className="text-muted-foreground">{search ? "Ничего не найдено" : "Нет магазинов"}</p>
                     </div>
                 ) : (
-                    <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-                        {filteredStores.map((store, index) => {
-                            const completeness = checkStoreCompleteness(store);
-                            const isError = completeness.status === 'error';
-                            const isWarning = completeness.status === 'warning';
+                    <TooltipProvider>
+                        <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                            {filteredStores.map((store, index) => {
+                                const completeness = checkStoreCompleteness(store, categories);
+                                const isError = completeness.status === 'error';
+                                const isWarning = completeness.status === 'warning';
 
-                            return (
-                                <Link key={store.id} href={`/stores/${store.id}`}>
-                                    <Card
-                                        variant="elevated"
-                                        interactive
-                                        className={cn(
-                                            "h-full animate-fade-in relative overflow-hidden transition-all duration-300",
-                                            // Warmer, softer colors for states
-                                            isError && "border-rose-500/30 bg-rose-500/[0.02] shadow-sm hover:border-rose-500/50",
-                                            isWarning && "border-orange-500/30 bg-orange-500/[0.02] shadow-sm hover:border-orange-500/50"
-                                        )}
-                                        style={{ animationDelay: `${index * 20}ms` }}
-                                    >
-                                        {/* Status Strip - Thinner and warmer */}
-                                        {(isError || isWarning) && (
-                                            <div className={cn(
-                                                "absolute left-0 top-0 bottom-0 w-[3px]",
-                                                isError ? "bg-rose-500/80" : "bg-orange-500/80"
-                                            )} />
-                                        )}
+                                // Card block styling logic: 
+                                // Don't color the card red if it's ONLY equipment missing (as per user request)
+                                const showRedStyle = isError && !completeness.isOnlyEquipment;
+                                const showOrangeStyle = isWarning;
 
-                                        <CardHeader className="p-3 pb-1">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <Badge variant={getStatusDisplay(store.status, store.isActive).variant} dot className="text-[10px] px-1.5 py-0">
-                                                    {getStatusDisplay(store.status, store.isActive).label}
-                                                </Badge>
-
-                                                {(isError || isWarning) && (
-                                                    <div className="flex gap-1 h-5 overflow-hidden">
-                                                        <Badge variant="outline" className={cn(
-                                                            "text-[9px] px-1 border-transparent font-medium",
-                                                            isError ? "bg-rose-500/10 text-rose-600" : "bg-orange-500/10 text-orange-600"
-                                                        )}>
-                                                            <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
-                                                            {completeness.missing.length}
-                                                        </Badge>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <div className="mt-2 flex items-center gap-2">
+                                return (
+                                    <Link key={store.id} href={`/stores/${store.id}`}>
+                                        <Card
+                                            variant="elevated"
+                                            interactive
+                                            className={cn(
+                                                "h-full animate-fade-in relative overflow-hidden transition-all duration-300",
+                                                showRedStyle && "border-rose-500/30 bg-rose-500/[0.02] shadow-sm hover:border-rose-500/50",
+                                                showOrangeStyle && "border-orange-500/30 bg-orange-500/[0.02] shadow-sm hover:border-orange-500/50"
+                                            )}
+                                            style={{ animationDelay: `${index * 20}ms` }}
+                                        >
+                                            {/* Status Strip - Thinner and warmer */}
+                                            {(isError || isWarning) && (
                                                 <div className={cn(
-                                                    "shrink-0 rounded-lg flex items-center justify-center h-8 w-8 transition-colors",
-                                                    isError ? "bg-rose-500/10" : isWarning ? "bg-orange-500/10" : "bg-primary/10"
-                                                )}>
-                                                    <Building2 className={cn(
-                                                        "h-4 w-4",
-                                                        isError ? "text-rose-500" : isWarning ? "text-orange-500" : "text-primary"
-                                                    )} />
-                                                </div>
-                                                <CardTitle className="text-base font-bold tracking-tight truncate">
-                                                    {store.name}
-                                                </CardTitle>
-                                            </div>
-                                            <CardDescription className="flex items-center gap-1.5 text-muted-foreground mt-1 text-[11px] leading-tight">
-                                                <MapPin className="shrink-0 h-3 w-3" />
-                                                <span className="truncate">{store.address}</span>
-                                            </CardDescription>
-                                        </CardHeader>
+                                                    "absolute left-0 top-0 bottom-0 w-[3px]",
+                                                    showRedStyle ? "bg-rose-500/80" :
+                                                        showOrangeStyle ? "bg-orange-500/80" :
+                                                            "bg-primary/50" // Neutral color for equipment-only issues
+                                                )} />
+                                            )}
 
-                                        <CardContent className="p-3 pt-2">
-                                            <div className="flex items-center justify-between border-t border-border/50 pt-2">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex items-center gap-1 text-success/80">
-                                                        <CheckCircle2 className="h-3.5 w-3.5" />
-                                                        <span className="font-bold text-xs">{store.stats?.installed || 0}</span>
-                                                    </div>
-                                                    {(store.stats?.pending || 0) > 0 && (
-                                                        <div className="flex items-center gap-1 text-warning/80">
-                                                            <AlertTriangle className="h-3.5 w-3.5" />
-                                                            <span className="font-bold text-xs">{store.stats?.pending || 0}</span>
-                                                        </div>
-                                                    )}
-                                                    {(store.stats?.inTransit || 0) > 0 && (
-                                                        <div className="flex items-center gap-1 text-info/80">
-                                                            <Boxes className="h-3.5 w-3.5" />
-                                                            <span className="font-bold text-xs">{store.stats?.inTransit || 0}</span>
-                                                        </div>
+                                            <CardHeader className="p-3 pb-1">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <Badge variant={getStatusDisplay(store.status, store.isActive).variant} dot className="text-[10px] px-1.5 py-0">
+                                                        {getStatusDisplay(store.status, store.isActive).label}
+                                                    </Badge>
+
+                                                    {(isError || isWarning) && (
+                                                        <Tooltip delayDuration={0}>
+                                                            <TooltipTrigger asChild>
+                                                                <div
+                                                                    className="flex gap-1 h-7 overflow-hidden cursor-help"
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                    }}
+                                                                >
+                                                                    <Badge
+                                                                        variant="outline"
+                                                                        className={cn(
+                                                                            "text-xs px-2.5 py-1 border-transparent font-bold shadow-sm transition-all hover:scale-105",
+                                                                            isError
+                                                                                ? "bg-rose-500/20 text-rose-600 border-rose-500/20"
+                                                                                : "bg-orange-500/20 text-orange-600 border-orange-500/20"
+                                                                        )}
+                                                                    >
+                                                                        <AlertTriangle className="h-3.5 w-3.5 mr-1" />
+                                                                        {completeness.missing.length}
+                                                                    </Badge>
+                                                                </div>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent
+                                                                side="top"
+                                                                className="w-80 p-0 border-none shadow-2xl overflow-hidden rounded-xl"
+                                                            >
+                                                                <div className={cn(
+                                                                    "px-4 py-3 text-white flex items-center gap-2",
+                                                                    isError ? "bg-rose-500" : "bg-orange-600"
+                                                                )}>
+                                                                    <AlertTriangle className="h-4 w-4" />
+                                                                    <span className="font-bold">
+                                                                        {isError ? "Обнаружены ошибки" : "Нужно заполнить"}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="p-4 bg-background space-y-3">
+                                                                    <div>
+                                                                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                                                                            Что отсутствует:
+                                                                        </p>
+                                                                        <div className="flex flex-wrap gap-1.5">
+                                                                            {completeness.missing.map((item: string, i: number) => (
+                                                                                <Badge
+                                                                                    key={i}
+                                                                                    variant="secondary"
+                                                                                    className="text-[10px] bg-muted py-0 px-2"
+                                                                                >
+                                                                                    {item}
+                                                                                </Badge>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="pt-2 border-t border-border">
+                                                                        <p className="text-[11px] leading-relaxed text-muted-foreground">
+                                                                            <span className="font-bold text-foreground">Как исправить:</span> Перейдите в карточку магазина и заполните указанные поля в режиме редактирования.
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            </TooltipContent>
+                                                        </Tooltip>
                                                     )}
                                                 </div>
-                                            </div>
-                                            {store.region && (
-                                                <p className="mt-2 text-muted-foreground truncate font-medium text-xs">{store.region}</p>
-                                            )}
-                                            {store.creator && (
-                                                <p className="text-[9px] text-muted-foreground mt-1 truncate">
-                                                    Создал: {store.creator.name}
-                                                </p>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                </Link>
-                            )
-                        })}
-                    </div>
+
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <div className={cn(
+                                                        "shrink-0 rounded-lg flex items-center justify-center h-8 w-8 transition-colors",
+                                                        showRedStyle ? "bg-rose-500/10" :
+                                                            showOrangeStyle ? "bg-orange-500/10" :
+                                                                "bg-primary/10"
+                                                    )}>
+                                                        <Building2 className={cn(
+                                                            "h-4 w-4",
+                                                            showRedStyle ? "text-rose-500" :
+                                                                showOrangeStyle ? "text-orange-500" :
+                                                                    "text-primary"
+                                                        )} />
+                                                    </div>
+                                                    <CardTitle className="text-base font-bold tracking-tight truncate">
+                                                        {store.name}
+                                                    </CardTitle>
+                                                </div>
+                                                <CardDescription className="flex items-center gap-1.5 text-muted-foreground mt-1 text-[11px] leading-tight">
+                                                    <MapPin className="shrink-0 h-3 w-3" />
+                                                    <span className="truncate">{store.address}</span>
+                                                </CardDescription>
+                                            </CardHeader>
+
+                                            <CardContent className="p-3 pt-2">
+                                                <div className="flex items-center justify-between border-t border-border/50 pt-2">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex items-center gap-1 text-success/80">
+                                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                                            <span className="font-bold text-xs">{store.stats?.installed || 0}</span>
+                                                        </div>
+                                                        {(store.stats?.pending || 0) > 0 && (
+                                                            <div className="flex items-center gap-1 text-warning/80">
+                                                                <AlertTriangle className="h-3.5 w-3.5" />
+                                                                <span className="font-bold text-xs">{store.stats?.pending || 0}</span>
+                                                            </div>
+                                                        )}
+                                                        {(store.stats?.inTransit || 0) > 0 && (
+                                                            <div className="flex items-center gap-1 text-info/80">
+                                                                <Boxes className="h-3.5 w-3.5" />
+                                                                <span className="font-bold text-xs">{store.stats?.inTransit || 0}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                {store.region && (
+                                                    <p className="mt-2 text-muted-foreground truncate font-medium text-xs">{store.region}</p>
+                                                )}
+                                                {store.creator && (
+                                                    <p className="text-[9px] text-muted-foreground mt-1 truncate">
+                                                        Создал: {store.creator.name}
+                                                    </p>
+                                                )}
+                                            </CardContent>
+                                        </Card>
+                                    </Link>
+                                )
+                            })}
+                        </div>
+                    </TooltipProvider>
                 )}
             </div>
         </div>

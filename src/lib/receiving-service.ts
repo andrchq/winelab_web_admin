@@ -15,6 +15,15 @@ export interface ReceivingItem {
         isManual: boolean;
         code?: string;
     }[];
+    product?: {
+        id: string;
+        name: string;
+        sku: string;
+        category?: {
+            code: string;
+            name: string;
+        };
+    };
 }
 
 export interface ReceivingSession {

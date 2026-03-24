@@ -25,6 +25,7 @@ import { CustomAreaChart } from "@/components/charts";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import { DigitalClock } from "./clock";
 
 export function DashboardContent() {
     const router = useRouter();
@@ -85,26 +86,18 @@ export function DashboardContent() {
         <ProtectedRoute>
             <div className="space-y-6">
                 {/* Page Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold text-foreground">Дашборд</h1>
+                        <h1 className="text-2xl font-bold text-foreground">Главная</h1>
                         <p className="text-sm text-muted-foreground mt-1">
                             Обзор состояния оборудования и логистики
                         </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-muted-foreground mr-2">
-                            {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
-                        </span>
-                        <Button variant="gradient" size="sm" onClick={() => router.push('/requests')}>
-                            <Package className="h-4 w-4 mr-2" />
-                            Новая заявка
-                        </Button>
-                    </div>
+                    <DigitalClock />
                 </div>
 
                 {/* Stats Grid */}
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 animate-stagger">
+                <div className="grid gap-3 grid-cols-2 md:grid-cols-2 lg:grid-cols-4 animate-stagger">
                     {statCards.map((stat) => (
                         <Link key={stat.title} href={stat.href}>
                             <StatCard
@@ -146,7 +139,7 @@ export function DashboardContent() {
                                 }))}
                                 color="#8b5cf6" // Requests (Purple)
                                 color2="#3b82f6" // Shipments (Blue)
-                                height={280}
+                                className="h-[200px] md:h-[280px]"
                                 gradientId="activity"
                                 tooltipLabels={{
                                     value: "Заявки",

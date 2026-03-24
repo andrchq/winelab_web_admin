@@ -71,13 +71,10 @@ export class CategoriesService {
     }
 
     async remove(id: string) {
-        // Check for dependencies
         const category = await this.prisma.equipmentCategory.findUnique({
             where: { id },
             include: {
-                _count: {
-                    select: { products: true, children: true }
-                }
+                _count: { select: { products: true, children: true } },
             }
         });
 
@@ -85,13 +82,16 @@ export class CategoriesService {
             throw new BadRequestException('Category not found');
         }
 
-        if (category._count.products > 0) {
-            throw new BadRequestException('Cannot delete category with associated products');
+        // Re-parent child categories to this category's parent (or null)
+        if (category._count.children > 0) {
+            await this.prisma.equipmentCategory.updateMany({
+                where: { parentId: id },
+                data: { parentId: (category as any).parentId ?? null }
+            });
         }
 
-        if (category._count.children > 0) {
-            throw new BadRequestException('Cannot delete category with child categories');
-        }
+        // Use raw SQL to null-out categoryId to bypass FK restriction
+        await this.prisma.$executeRaw`UPDATE products SET "categoryId" = NULL WHERE "categoryId" = ${id}`;
 
         return this.prisma.equipmentCategory.delete({
             where: { id }

@@ -50,8 +50,9 @@ export class RequestsController {
     async updateStatus(
         @Param('id') id: string,
         @Body() data: { status: RequestStatus; assigneeId?: string },
+        @CurrentUser() user: User,
     ) {
-        return this.requestsService.updateStatus(id, data.status, data.assigneeId);
+        return this.requestsService.updateStatus(id, data.status, user.id, data.assigneeId);
     }
 
     @Post(':id/comments')

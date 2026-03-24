@@ -44,6 +44,7 @@ export enum SystemPermission {
     SHIPMENT_READ = 'SHIPMENT_READ',
     SHIPMENT_CREATE = 'SHIPMENT_CREATE',
     SHIPMENT_UPDATE = 'SHIPMENT_UPDATE',
+    SHIPMENT_DELETE = 'SHIPMENT_DELETE',
 
     // Deliveries
     DELIVERY_READ = 'DELIVERY_READ',
@@ -98,6 +99,7 @@ export const PERMISSION_CATEGORIES = {
     [SystemPermission.SHIPMENT_READ]: 'Warehouse',
     [SystemPermission.SHIPMENT_CREATE]: 'Warehouse',
     [SystemPermission.SHIPMENT_UPDATE]: 'Warehouse',
+    [SystemPermission.SHIPMENT_DELETE]: 'Warehouse',
 
     [SystemPermission.DELIVERY_READ]: 'Logistics',
     [SystemPermission.DELIVERY_UPDATE]: 'Logistics',

@@ -42,6 +42,7 @@ export function Header() {
     };
 
     const { isTSDMode, enableTSDMode } = useTSDMode();
+    const roleName = typeof user?.role === "string" ? user.role : user?.role?.name;
 
     if (isTSDMode) return null;
 
@@ -112,9 +113,9 @@ export function Header() {
                                 <p className="text-lg font-bold text-foreground leading-none mb-1.5">{user.name}</p>
                                 <p className={cn(
                                     "text-xs px-2 py-0.5 rounded-md inline-block font-medium uppercase tracking-wide",
-                                    roleColors[user.role] || "bg-muted text-muted-foreground"
+                                    roleColors[roleName ?? ""] || "bg-muted text-muted-foreground"
                                 )}>
-                                    {roleLabels[user.role] || user.role}
+                                    {roleLabels[roleName ?? ""] || roleName || "Без роли"}
                                 </p>
                             </div>
                             <ChevronDown className={cn(

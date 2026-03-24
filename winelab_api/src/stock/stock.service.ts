@@ -1,9 +1,24 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class StockService {
     constructor(private prisma: PrismaService) { }
+
+    private validateSnapshot(quantity: number, reserved: number, minQuantity: number) {
+        if (quantity < 0) {
+            throw new BadRequestException('Количество не может быть отрицательным');
+        }
+        if (reserved < 0) {
+            throw new BadRequestException('Резерв не может быть отрицательным');
+        }
+        if (minQuantity < 0) {
+            throw new BadRequestException('Минимальный остаток не может быть отрицательным');
+        }
+        if (reserved > quantity) {
+            throw new BadRequestException('Резерв не может превышать количество на складе');
+        }
+    }
 
     async findAll() {
         return this.prisma.stockItem.findMany({
@@ -39,7 +54,10 @@ export class StockService {
         return item;
     }
 
-    async create(data: { productId: string; warehouseId: string; quantity: number; minQuantity?: number }) {
+    async create(data: { productId: string; warehouseId: string; quantity: number; minQuantity?: number; reserved?: number }) {
+        const minQuantity = data.minQuantity ?? 0;
+        const reserved = data.reserved ?? 0;
+
         // Check if exists
         const existing = await this.prisma.stockItem.findUnique({
             where: {
@@ -51,12 +69,19 @@ export class StockService {
         });
 
         if (existing) {
+            const nextQuantity = existing.quantity + data.quantity;
+            const nextReserved = data.reserved ?? existing.reserved;
+            const nextMinQuantity = data.minQuantity ?? existing.minQuantity;
+
+            this.validateSnapshot(nextQuantity, nextReserved, nextMinQuantity);
+
             // Update quantity if exists
             return this.prisma.stockItem.update({
                 where: { id: existing.id },
                 data: {
                     quantity: { increment: data.quantity },
-                    minQuantity: data.minQuantity ?? existing.minQuantity,
+                    reserved: nextReserved,
+                    minQuantity: nextMinQuantity,
                 },
                 include: {
                     product: {
@@ -67,12 +92,15 @@ export class StockService {
             });
         }
 
+        this.validateSnapshot(data.quantity, reserved, minQuantity);
+
         return this.prisma.stockItem.create({
             data: {
                 productId: data.productId,
                 warehouseId: data.warehouseId,
                 quantity: data.quantity,
-                minQuantity: data.minQuantity ?? 0,
+                reserved,
+                minQuantity,
             },
             include: {
                 product: {
@@ -84,6 +112,13 @@ export class StockService {
     }
 
     async update(id: string, data: { quantity?: number; minQuantity?: number; reserved?: number }) {
+        const existing = await this.findOne(id);
+        const nextQuantity = data.quantity ?? existing.quantity;
+        const nextReserved = data.reserved ?? existing.reserved;
+        const nextMinQuantity = data.minQuantity ?? existing.minQuantity;
+
+        this.validateSnapshot(nextQuantity, nextReserved, nextMinQuantity);
+
         return this.prisma.stockItem.update({
             where: { id },
             data,
@@ -97,6 +132,11 @@ export class StockService {
     }
 
     async adjust(id: string, delta: number) {
+        const existing = await this.findOne(id);
+        const nextQuantity = existing.quantity + delta;
+
+        this.validateSnapshot(nextQuantity, existing.reserved, existing.minQuantity);
+
         return this.prisma.stockItem.update({
             where: { id },
             data: {

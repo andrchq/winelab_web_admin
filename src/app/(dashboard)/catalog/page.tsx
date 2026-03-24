@@ -153,8 +153,8 @@ export default function CatalogPage() {
                                                         </code>
                                                     </td>
                                                     <td>
-                                                        <Badge variant="secondary" className={categoryColors[product.category] || "bg-secondary/10"}>
-                                                            {product.category}
+                                                        <Badge variant="secondary" className={categoryColors[product.category?.name] || "bg-secondary/10"}>
+                                                            {product.category?.name || "Не указана"}
                                                         </Badge>
                                                     </td>
                                                     <td className="font-medium">{stock}</td>

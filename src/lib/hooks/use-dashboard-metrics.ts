@@ -45,13 +45,15 @@ export function useDashboardMetrics(): DashboardMetrics {
 
     const [shipments, setShipments] = useState<ShippingSession[]>([]);
 
-    // Poll for shipments (LocalStorage)
     useEffect(() => {
-        const loadShipments = () => {
-            setShipments(shippingService.getAll());
+        const loadShipments = async () => {
+            const data = await shippingService.getAll();
+            setShipments(data);
         };
-        loadShipments();
-        const interval = setInterval(loadShipments, 2000);
+        void loadShipments();
+        const interval = setInterval(() => {
+            void loadShipments();
+        }, 5000);
         return () => clearInterval(interval);
     }, []);
 

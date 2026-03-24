@@ -10,7 +10,8 @@ import {
     Package,
     AlertTriangle,
     CheckCircle2,
-    Loader2
+    Loader2,
+    MessageSquare
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,11 +21,16 @@ import { useParams } from "next/navigation";
 import { useAsset } from "@/lib/hooks";
 
 const conditionMap: Record<string, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
+    WORKING: { label: "Работает", variant: "success" },
+    NEEDS_REPAIR: { label: "Требует ремонта", variant: "warning" },
+    IN_REPAIR: { label: "В ремонте", variant: "destructive" },
+    DECOMMISSIONED: { label: "Списано", variant: "secondary" },
+    UNKNOWN: { label: "Неизвестно", variant: "secondary" },
+    // Legacy
     NEW: { label: "Новое", variant: "success" },
     GOOD: { label: "Хорошее", variant: "success" },
     FAIR: { label: "Удовлетворительное", variant: "warning" },
     REPAIR: { label: "На ремонте", variant: "destructive" },
-    DECOMMISSIONED: { label: "Списан", variant: "secondary" },
 };
 
 const processMap: Record<string, { label: string; color: string }> = {
@@ -185,26 +191,33 @@ export default function AssetDetailPage() {
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
-                                {asset.movements && asset.movements.length > 0 ? (
+                                {asset.history && asset.history.length > 0 ? (
                                     <div className="space-y-4">
-                                        {asset.movements.map((item: any, index: number) => (
+                                        {asset.history?.map((item: any, index: number) => (
                                             <div key={index} className="flex items-start gap-4">
                                                 <div className="flex flex-col items-center">
                                                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                                                        <Clock className="h-4 w-4 text-primary" />
+                                                        {item.action === 'COMMENT' ? <MessageSquare className="h-4 w-4 text-primary" /> : <Clock className="h-4 w-4 text-primary" />}
                                                     </div>
-                                                    {index < (asset.movements?.length || 0) - 1 && (
+                                                    {index < (asset.history?.length || 0) - 1 && (
                                                         <div className="h-8 w-0.5 bg-border" />
                                                     )}
                                                 </div>
                                                 <div className="flex-1 pb-4">
                                                     <div className="flex items-center justify-between">
-                                                        <p className="font-medium">{item.action}</p>
+                                                        <p className="font-medium">{item.action === 'COMMENT' ? 'Комментарий' : item.action}</p>
                                                         <span className="text-xs text-muted-foreground">
-                                                            {new Date(item.createdAt).toLocaleDateString('ru-RU')}
+                                                            {new Date(item.createdAt).toLocaleDateString('ru-RU')} {new Date(item.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
                                                         </span>
                                                     </div>
-                                                    <p className="text-sm text-muted-foreground">{item.location}</p>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {item.details || item.location || (
+                                                            item.action === 'STATUS_CHANGE'
+                                                                ? `Состояние изменено c ${conditionMap[item.fromStatus || '']?.label || item.fromStatus} на ${conditionMap[item.toStatus || '']?.label || item.toStatus}`
+                                                                : ''
+                                                        )}
+                                                    </p>
+                                                    {item.user && <p className="text-xs text-muted-foreground mt-1">{item.user.name}</p>}
                                                 </div>
                                             </div>
                                         ))}

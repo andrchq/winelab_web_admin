@@ -22,7 +22,8 @@ import {
     Copy,
     ExternalLink,
     Trash2,
-    Settings2
+    Settings2,
+    MessageSquare
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,19 +31,23 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useStore, useCategories } from "@/lib/hooks";
+import { Checkbox } from "@/components/ui/checkbox";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useMemo, useState, useEffect } from "react";
 import { YandexMap } from "@/components/maps";
 import { EditStoreDialog } from "@/components/stores/edit-store-dialog";
 import { AddStoreEquipmentDialog } from "@/components/stores/add-store-equipment-dialog";
-import { EditAssetDialog } from "@/components/stores/edit-asset-dialog";
+import { EditAssetDialog } from "@/components/assets/edit-asset-dialog";
+import { BatchReplacementDialog } from "@/components/assets/batch-replacement-dialog";
+import { CreateRequestDialog } from "@/components/requests/create-request-dialog";
 import type { StoreStatus, StoreEquipment, Asset } from "@/types/api";
 import { getMissingEquipment, sortCategories } from "@/lib/equipment-categories";
 
 import { PingStatusResponse } from "@/types/api";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { SystemPermission } from "@/lib/permissions";
 import { toast } from "sonner";
 
 const copyToClipboard = (text: string) => {
@@ -81,6 +86,12 @@ const fallbackCopy = (text: string) => {
 };
 
 const conditionMap: Record<string, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
+    WORKING: { label: "Работает", variant: "success" },
+    NEEDS_REPAIR: { label: "Требует ремонта", variant: "warning" },
+    IN_REPAIR: { label: "В ремонте", variant: "destructive" },
+    DECOMMISSIONED: { label: "Списано", variant: "secondary" },
+    UNKNOWN: { label: "Неизвестно", variant: "secondary" },
+    // Legacy support
     NEW: { label: "Новое", variant: "success" },
     GOOD: { label: "Хорошее", variant: "success" },
     FAIR: { label: "Удовлетворительное", variant: "warning" },
@@ -201,13 +212,19 @@ export default function StoreDetailPage() {
     const router = useRouter();
     const id = params.id as string;
     const { data: store, isLoading, error, refetch } = useStore(id);
-    const { hasRole } = useAuth();
+    const { hasRole, hasPermission } = useAuth();
     const { data: categories } = useCategories();
     const [editOpen, setEditOpen] = useState(false);
+    const [createRequestOpen, setCreateRequestOpen] = useState(false);
     const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);
     const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
     const [pingStatus, setPingStatus] = useState<PingStatusResponse | null>(null);
+
+    // Batch replacement state
+    const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+    const [replaceModalOpen, setReplaceModalOpen] = useState(false);
     const canDelete = hasRole(['ADMIN', 'MANAGER']);
+    const canCreateRequest = hasPermission([SystemPermission.REQUEST_CREATE]);
 
     // Unified equipment list (merging store.equipment and store.assets)
     const effectiveEquipment = useMemo(() => {
@@ -281,6 +298,14 @@ export default function StoreDetailPage() {
         }
     };
 
+    const toggleAssetSelection = (assetId: string) => {
+        setSelectedAssetIds(prev =>
+            prev.includes(assetId)
+                ? prev.filter(id => id !== assetId)
+                : [...prev, assetId]
+        );
+    };
+
     return (
         <div className="p-3 sm:p-6 h-full flex flex-col overflow-hidden">
             <div className="space-y-4 sm:space-y-6 animate-fade-in flex-1 overflow-y-auto no-scrollbar">
@@ -304,10 +329,12 @@ export default function StoreDetailPage() {
                                 <span className="hidden sm:inline">Удалить</span>
                             </Button>
                         )}
-                        <Button variant="gradient" size="sm" className="gap-2 h-10">
-                            <Plus className="h-4 w-4" />
-                            <span className="whitespace-nowrap">Создать заявку</span>
-                        </Button>
+                        {canCreateRequest && (
+                            <Button variant="gradient" size="sm" className="gap-2 h-10" onClick={() => setCreateRequestOpen(true)}>
+                                <Plus className="h-4 w-4" />
+                                <span className="whitespace-nowrap">Создать заявку</span>
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -513,6 +540,23 @@ export default function StoreDetailPage() {
                                                 </CardTitle>
                                                 <CardDescription className="text-xs md:text-sm">{stats.installed} единиц</CardDescription>
                                             </div>
+                                            {selectedAssetIds.length > 0 && (
+                                                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-200">
+                                                    <Badge variant="secondary" className="hidden sm:inline-flex px-2 py-1">
+                                                        Выбрано: {selectedAssetIds.length}
+                                                    </Badge>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="warning"
+                                                        className="h-9 gap-2 shadow-sm"
+                                                        onClick={() => setReplaceModalOpen(true)}
+                                                    >
+                                                        <Wrench className="h-4 w-4" />
+                                                        <span className="hidden sm:inline">Заменить выбранные</span>
+                                                        <span className="sm:hidden">Заменить</span>
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
                                         <Button
                                             size="default"
@@ -552,15 +596,37 @@ export default function StoreDetailPage() {
                                                                 </span>
                                                             </div>
                                                             <div className="grid gap-2">
-                                                                {items.map((item: any) => (
-                                                                    <Link key={item.id} href={`/assets/${item.id}`}>
-                                                                        <div className="flex items-center justify-between rounded-lg border border-border/50 p-2.5 hover:bg-accent/30 transition-colors cursor-pointer group">
+                                                                {items.map((item: any) => {
+                                                                    const isSelected = selectedAssetIds.includes(item.id);
+                                                                    return (
+                                                                        <div
+                                                                            key={item.id}
+                                                                            className={cn(
+                                                                                "flex items-center justify-between rounded-lg border p-2.5 transition-all group",
+                                                                                isSelected
+                                                                                    ? "border-primary/50 bg-primary/5 shadow-sm"
+                                                                                    : "border-border/50 hover:bg-accent/30 hover:border-border cursor-pointer"
+                                                                            )}
+                                                                            onClick={() => toggleAssetSelection(item.id)}
+                                                                        >
                                                                             <div className="flex items-center gap-3">
-                                                                                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-emerald-500/10 group-hover:bg-emerald-500/20 transition-colors">
-                                                                                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                                                                <div className="flex items-center justify-center p-1 mr-1" onClick={(e) => e.stopPropagation()}>
+                                                                                    <Checkbox
+                                                                                        checked={isSelected}
+                                                                                        onCheckedChange={() => toggleAssetSelection(item.id)}
+                                                                                        className={cn("h-5 w-5 rounded-[4px]", isSelected ? "border-primary" : "border-muted-foreground/30")}
+                                                                                    />
                                                                                 </div>
                                                                                 <div>
-                                                                                    <p className="font-medium text-sm">{item.product?.name}</p>
+                                                                                    <p className="font-medium text-sm flex items-center gap-2">
+                                                                                        {item.product?.name}
+                                                                                        {item._count?.assetHistory > 0 && (
+                                                                                            <Badge variant="secondary" className="px-1.5 py-0 h-4 text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/20" title="Комментарии пользователей">
+                                                                                                <MessageSquare className="h-3 w-3 mr-1" />
+                                                                                                {item._count.assetHistory}
+                                                                                            </Badge>
+                                                                                        )}
+                                                                                    </p>
                                                                                     <p className="text-xs text-muted-foreground font-mono">{item.serialNumber}</p>
                                                                                 </div>
                                                                             </div>
@@ -583,8 +649,8 @@ export default function StoreDetailPage() {
                                                                                 </Button>
                                                                             </div>
                                                                         </div>
-                                                                    </Link>
-                                                                ))}
+                                                                    );
+                                                                })}
                                                             </div>
                                                         </div>
                                                     ))}
@@ -697,6 +763,15 @@ export default function StoreDetailPage() {
                 />
             )}
 
+            {store && (
+                <CreateRequestDialog
+                    open={createRequestOpen}
+                    onOpenChange={setCreateRequestOpen}
+                    presetStoreId={store.id}
+                    presetStoreName={store.name}
+                />
+            )}
+
             {/* Edit Asset Dialog */}
             {editingAsset && (
                 <EditAssetDialog
@@ -705,8 +780,21 @@ export default function StoreDetailPage() {
                     open={!!editingAsset}
                     onOpenChange={(open) => !open && setEditingAsset(null)}
                     onSuccess={() => {
-                        setEditingAsset(null);
                         refetch();
+                    }}
+                />
+            )}
+
+            {/* Batch Replacement Dialog */}
+            {store && replaceModalOpen && (
+                <BatchReplacementDialog
+                    storeId={store.id}
+                    selectedAssetIds={selectedAssetIds}
+                    open={replaceModalOpen}
+                    onOpenChange={setReplaceModalOpen}
+                    onSuccess={() => {
+                        refetch();
+                        setSelectedAssetIds([]);
                     }}
                 />
             )}

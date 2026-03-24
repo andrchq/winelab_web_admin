@@ -1,23 +1,31 @@
 "use client";
 
+import { useState } from "react";
 import {
     ArrowLeft,
-    ExternalLink,
-    Loader2,
-    MapPin,
-    Truck,
-    Package,
     CheckCircle2,
     Clock,
+    ExternalLink,
+    Loader2,
+    Mail,
+    MapPin,
+    Package,
     Phone,
-    User
+    RefreshCw,
+    Truck,
+    User,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDelivery } from "@/lib/hooks";
+import { deliveryApi } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { SystemPermission } from "@/lib/permissions";
 import { YandexMap } from "@/components/maps";
 
 const statusMap: Record<string, { label: string; variant: "default" | "success" | "warning" | "destructive" | "secondary" }> = {
@@ -30,122 +38,215 @@ const statusMap: Record<string, { label: string; variant: "default" | "success" 
     CANCELLED: { label: "Отменена", variant: "destructive" },
 };
 
+type TimelineEvent = {
+    id: string;
+    time: string;
+    title: string;
+    status: "completed" | "current" | "pending";
+    description?: string;
+};
+
 export default function DeliveryDetailPage() {
     const params = useParams();
     const id = params.id as string;
-    const { data: delivery, isLoading, error } = useDelivery(id);
+    const { hasPermission } = useAuth();
+    const { data: delivery, isLoading, error, refetch } = useDelivery(id);
+    const [isUpdating, setIsUpdating] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const canUpdateDelivery = hasPermission([SystemPermission.DELIVERY_UPDATE]);
+    const isYandexDelivery = delivery?.provider === "YANDEX_DELIVERY";
 
     const formatDate = (dateStr: string) => {
-        return new Date(dateStr).toLocaleString('ru-RU', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
+        return new Date(dateStr).toLocaleString("ru-RU", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
         });
     };
 
-    // Build timeline from delivery data
     const buildTimeline = () => {
         if (!delivery) return [];
-        const timeline = [];
 
-        timeline.push({
-            id: '1',
-            time: formatDate(delivery.createdAt),
-            title: 'Доставка создана',
-            status: 'completed'
-        });
+        const timeline: TimelineEvent[] = [
+            {
+                id: "1",
+                time: formatDate(delivery.createdAt),
+                title: "Доставка создана",
+                status: "completed",
+            },
+        ];
 
         if (delivery.courierName) {
             timeline.push({
-                id: '2',
-                time: delivery.pickedUpAt ? formatDate(delivery.pickedUpAt) : '—',
-                title: 'Курьер назначен',
+                id: "2",
+                time: delivery.updatedAt ? formatDate(delivery.updatedAt) : "—",
+                title: "Курьер назначен",
                 description: delivery.courierName,
-                status: 'completed'
+                status: "completed",
             });
         }
 
-        if (['PICKED_UP', 'IN_TRANSIT', 'DELIVERED'].includes(delivery.status)) {
+        if (["PICKED_UP", "IN_TRANSIT", "DELIVERED"].includes(delivery.status)) {
             timeline.push({
-                id: '3',
-                time: delivery.pickedUpAt ? formatDate(delivery.pickedUpAt) : '—',
-                title: 'Забрано со склада',
-                status: 'completed'
+                id: "3",
+                time: delivery.updatedAt ? formatDate(delivery.updatedAt) : "—",
+                title: "Забрано со склада",
+                status: "completed",
             });
         }
 
-        if (['IN_TRANSIT', 'DELIVERED'].includes(delivery.status)) {
+        if (["IN_TRANSIT", "DELIVERED"].includes(delivery.status)) {
             timeline.push({
-                id: '4',
-                time: delivery.status === 'DELIVERED' ? formatDate(delivery.deliveredAt || delivery.updatedAt || delivery.createdAt) : 'Сейчас',
-                title: delivery.status === 'DELIVERED' ? 'Доставлено' : 'В пути',
-                status: delivery.status === 'DELIVERED' ? 'completed' : 'current'
+                id: "4",
+                time: delivery.status === "DELIVERED"
+                    ? formatDate(delivery.deliveredAt || delivery.updatedAt || delivery.createdAt)
+                    : "Сейчас",
+                title: delivery.status === "DELIVERED" ? "Доставлено" : "В пути",
+                status: delivery.status === "DELIVERED" ? "completed" : "current",
             });
-        } else if (!['CANCELLED', 'PROBLEM'].includes(delivery.status)) {
+        } else if (!["CANCELLED", "PROBLEM"].includes(delivery.status)) {
             timeline.push({
-                id: '4',
-                time: '—',
-                title: 'Доставка',
-                status: 'pending'
+                id: "4",
+                time: "—",
+                title: "Доставка",
+                status: "pending",
             });
         }
 
         return timeline;
     };
 
+    const handleStatusChange = async (status: "COURIER_ASSIGNED" | "PICKED_UP" | "IN_TRANSIT" | "DELIVERED") => {
+        if (!delivery) {
+            return;
+        }
+
+        setIsUpdating(true);
+        try {
+            await deliveryApi.updateStatus(delivery.id, {
+                status,
+                courierName: status === "COURIER_ASSIGNED" ? delivery.courierName || "Курьер назначен" : delivery.courierName,
+                courierPhone: delivery.courierPhone,
+            });
+            toast.success(
+                status === "DELIVERED"
+                    ? "Доставка завершена, заявка закрыта"
+                    : status === "IN_TRANSIT"
+                      ? "Доставка переведена в статус В пути"
+                      : status === "PICKED_UP"
+                        ? "Отмечено как забрано со склада"
+                        : "Курьер назначен",
+            );
+            await refetch();
+        } catch (updateError) {
+            toast.error(updateError instanceof Error ? updateError.message : "Не удалось обновить доставку");
+        } finally {
+            setIsUpdating(false);
+        }
+    };
+
+    const handleSyncProvider = async () => {
+        if (!delivery) {
+            return;
+        }
+
+        setIsSyncing(true);
+        try {
+            await deliveryApi.syncProvider(delivery.id);
+            toast.success("Статус обновлен из Yandex Delivery");
+            await refetch();
+        } catch (syncError) {
+            toast.error(syncError instanceof Error ? syncError.message : "Не удалось обновить статус из Yandex Delivery");
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     return (
         <div className="p-6">
             <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
-                {/* Back Button */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                     <Link href="/deliveries">
                         <Button variant="ghost" className="gap-2">
                             <ArrowLeft className="h-4 w-4" />
                             Назад к доставкам
                         </Button>
                     </Link>
-                    {delivery?.trackingUrl && (
-                        <a href={delivery.trackingUrl} target="_blank" rel="noopener noreferrer">
-                            <Button variant="outline" className="gap-2">
-                                <ExternalLink className="h-4 w-4" />
-                                Открыть в Яндекс.Доставка
+                    <div className="flex flex-wrap items-center gap-2">
+                        {delivery?.trackingUrl && (
+                            <a href={delivery.trackingUrl} target="_blank" rel="noopener noreferrer">
+                                <Button variant="outline" className="gap-2">
+                                    <ExternalLink className="h-4 w-4" />
+                                    Открыть в Яндекс.Доставка
+                                </Button>
+                            </a>
+                        )}
+                        {delivery && isYandexDelivery && (
+                            <Button variant="outline" className="gap-2" onClick={handleSyncProvider} disabled={isSyncing}>
+                                {isSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                Обновить из Яндекса
                             </Button>
-                        </a>
-                    )}
+                        )}
+                    </div>
                 </div>
+
+                {delivery && canUpdateDelivery && !isYandexDelivery && !["DELIVERED", "CANCELLED"].includes(delivery.status) && (
+                    <Card>
+                        <CardContent className="flex flex-wrap gap-2 p-4">
+                            {delivery.status === "CREATED" && (
+                                <Button variant="outline" disabled={isUpdating} onClick={() => handleStatusChange("COURIER_ASSIGNED")}>
+                                    {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Назначить курьера"}
+                                </Button>
+                            )}
+                            {["CREATED", "COURIER_ASSIGNED"].includes(delivery.status) && (
+                                <Button variant="outline" disabled={isUpdating} onClick={() => handleStatusChange("PICKED_UP")}>
+                                    {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Забрано со склада"}
+                                </Button>
+                            )}
+                            {["COURIER_ASSIGNED", "PICKED_UP"].includes(delivery.status) && (
+                                <Button variant="outline" disabled={isUpdating} onClick={() => handleStatusChange("IN_TRANSIT")}>
+                                    {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : "В пути"}
+                                </Button>
+                            )}
+                            {["COURIER_ASSIGNED", "PICKED_UP", "IN_TRANSIT"].includes(delivery.status) && (
+                                <Button variant="gradient" disabled={isUpdating} onClick={() => handleStatusChange("DELIVERED")}>
+                                    {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Доставлено"}
+                                </Button>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
 
                 {isLoading ? (
                     <div className="flex items-center justify-center py-24">
                         <Loader2 className="h-12 w-12 animate-spin text-primary" />
                     </div>
                 ) : error ? (
-                    <div className="text-center py-24 text-red-400">
-                        Ошибка загрузки: {error}
-                    </div>
+                    <div className="py-24 text-center text-red-400">Ошибка загрузки: {error}</div>
                 ) : !delivery ? (
-                    <div className="text-center py-24 text-muted-foreground">
-                        Доставка не найдена
-                    </div>
+                    <div className="py-24 text-center text-muted-foreground">Доставка не найдена</div>
                 ) : (
                     <>
-                        {/* Delivery Header */}
                         <Card>
                             <CardContent className="p-6">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <span className="font-mono text-sm text-muted-foreground">
                                                 {delivery.externalId || delivery.id.slice(0, 8)}
                                             </span>
                                             <Badge variant={statusMap[delivery.status]?.variant || "secondary"}>
                                                 {statusMap[delivery.status]?.label || delivery.status}
                                             </Badge>
+                                            <Badge variant="outline">
+                                                {isYandexDelivery ? "Yandex Delivery" : delivery.provider}
+                                            </Badge>
                                         </div>
                                         {delivery.store && (
                                             <Link href={`/stores/${delivery.store.id}`}>
-                                                <h1 className="mt-2 text-2xl font-bold text-primary hover:underline flex items-center gap-2">
+                                                <h1 className="mt-2 flex items-center gap-2 text-2xl font-bold text-primary hover:underline">
                                                     <MapPin className="h-5 w-5" />
                                                     {delivery.store.name}
                                                 </h1>
@@ -158,10 +259,9 @@ export default function DeliveryDetailPage() {
                                     </div>
                                 </div>
 
-                                {/* Courier Info */}
                                 {delivery.courierName && (
-                                    <div className="mt-6 p-4 rounded-lg bg-muted/30 border border-border/50">
-                                        <p className="text-sm text-muted-foreground mb-2">Курьер</p>
+                                    <div className="mt-6 rounded-lg border border-border/50 bg-muted/30 p-4">
+                                        <p className="mb-2 text-sm text-muted-foreground">Курьер</p>
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
@@ -170,7 +270,7 @@ export default function DeliveryDetailPage() {
                                                 <div>
                                                     <p className="font-medium">{delivery.courierName}</p>
                                                     {delivery.courierPhone && (
-                                                        <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                                        <p className="flex items-center gap-1 text-sm text-muted-foreground">
                                                             <Phone className="h-3 w-3" />
                                                             {delivery.courierPhone}
                                                         </p>
@@ -187,10 +287,42 @@ export default function DeliveryDetailPage() {
                                         </div>
                                     </div>
                                 )}
+
+                                {isYandexDelivery && (
+                                    <div className="mt-6 grid gap-3 rounded-lg border border-border/50 bg-muted/20 p-4 md:grid-cols-2">
+                                        <div className="space-y-1">
+                                            <p className="text-sm text-muted-foreground">Отправитель</p>
+                                            <p className="font-medium">{delivery.sourceContactName || "Не заполнено"}</p>
+                                            <p className="flex items-center gap-1 text-sm text-muted-foreground">
+                                                <Phone className="h-3 w-3" />
+                                                {delivery.sourceContactPhone || "Телефон не заполнен"}
+                                            </p>
+                                            <p className="flex items-center gap-1 text-sm text-muted-foreground">
+                                                <Mail className="h-3 w-3" />
+                                                {delivery.sourceContactEmail || "Email не заполнен"}
+                                            </p>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="text-sm text-muted-foreground">Получатель</p>
+                                            <p className="font-medium">{delivery.recipientContactName || "Не заполнено"}</p>
+                                            <p className="flex items-center gap-1 text-sm text-muted-foreground">
+                                                <Phone className="h-3 w-3" />
+                                                {delivery.recipientContactPhone || "Телефон не заполнен"}
+                                            </p>
+                                            {delivery.recipientComment && (
+                                                <p className="text-sm text-muted-foreground">{delivery.recipientComment}</p>
+                                            )}
+                                        </div>
+                                        {delivery.rawStatus && (
+                                            <div className="rounded-md bg-background/80 px-3 py-2 text-sm text-muted-foreground md:col-span-2">
+                                                Статус провайдера: <span className="font-mono">{delivery.rawStatus}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
 
-                        {/* Timeline */}
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
@@ -200,23 +332,21 @@ export default function DeliveryDetailPage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-4">
-                                    {buildTimeline().map((event, index) => (
+                                    {buildTimeline().map((event, index, list) => (
                                         <div key={event.id} className="flex items-start gap-4">
                                             <div className="flex flex-col items-center">
-                                                {event.status === 'completed' ? (
+                                                {event.status === "completed" ? (
                                                     <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-                                                ) : event.status === 'current' ? (
+                                                ) : event.status === "current" ? (
                                                     <div className="h-6 w-6 rounded-full border-2 border-primary bg-primary/20 animate-pulse" />
                                                 ) : (
                                                     <div className="h-6 w-6 rounded-full border-2 border-muted-foreground" />
                                                 )}
-                                                {index < buildTimeline().length - 1 && (
-                                                    <div className="h-8 w-0.5 bg-border mt-1" />
-                                                )}
+                                                {index < list.length - 1 && <div className="mt-1 h-8 w-0.5 bg-border" />}
                                             </div>
                                             <div className="flex-1 pb-2">
                                                 <div className="flex items-center justify-between">
-                                                    <p className={`font-medium ${event.status === 'pending' ? 'text-muted-foreground' : ''}`}>
+                                                    <p className={`font-medium ${event.status === "pending" ? "text-muted-foreground" : ""}`}>
                                                         {event.title}
                                                     </p>
                                                     <span className="text-xs text-muted-foreground">{event.time}</span>
@@ -231,7 +361,6 @@ export default function DeliveryDetailPage() {
                             </CardContent>
                         </Card>
 
-                        {/* Shipment Items */}
                         {delivery.shipment?.items && delivery.shipment.items.length > 0 && (
                             <Card>
                                 <CardHeader>
@@ -244,12 +373,12 @@ export default function DeliveryDetailPage() {
                                     <div className="space-y-2">
                                         {delivery.shipment.items.map((item: any) => (
                                             <Link key={item.id} href={`/assets/${item.asset?.id}`}>
-                                                <div className="flex items-center justify-between rounded-lg border border-border/50 p-3 hover:bg-accent/30 transition-colors cursor-pointer">
+                                                <div className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 p-3 transition-colors hover:bg-accent/30">
                                                     <div>
                                                         <p className="font-medium">{item.asset?.product?.name}</p>
-                                                        <p className="text-sm text-muted-foreground font-mono">{item.asset?.serialNumber}</p>
+                                                        <p className="font-mono text-sm text-muted-foreground">{item.asset?.serialNumber}</p>
                                                     </div>
-                                                    <Badge variant="secondary">{item.quantity} шт.</Badge>
+                                                    <Badge variant="secondary">1 шт.</Badge>
                                                 </div>
                                             </Link>
                                         ))}
@@ -258,9 +387,8 @@ export default function DeliveryDetailPage() {
                             </Card>
                         )}
 
-                        {/* Map Route */}
                         <Card>
-                            <CardContent className="p-0 overflow-hidden rounded-xl h-[400px]">
+                            <CardContent className="h-[400px] overflow-hidden rounded-xl p-0">
                                 <YandexMap
                                     height={400}
                                     zoom={10}
@@ -268,13 +396,13 @@ export default function DeliveryDetailPage() {
                                         {
                                             coordinates: [55.73, 37.60],
                                             title: "Склад",
-                                            description: "Точка отправления"
+                                            description: "Точка отправления",
                                         },
                                         {
                                             coordinates: [55.75, 37.62],
                                             title: delivery.store?.name || "Магазин",
-                                            description: delivery.store?.address
-                                        }
+                                            description: delivery.store?.address,
+                                        },
                                     ]}
                                 />
                             </CardContent>

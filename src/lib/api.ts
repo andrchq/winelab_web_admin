@@ -107,3 +107,29 @@ export function initializeAuth() {
         api.setToken(token);
     }
 }
+
+export const inventoryApi = {
+    getAll: () => api.get<any[]>('/inventory'),
+    getOne: (id: string, search?: string) => api.get<any>(`/inventory/${id}${search ? `?search=${search}` : ''}`),
+    start: (warehouseId: string) => api.post<any>('/inventory/start', { warehouseId }),
+    scan: (id: string, barcode: string) => api.post<any>(`/inventory/${id}/scan`, { barcode }),
+    finish: (id: string) => api.post<any>(`/inventory/${id}/finish`),
+    applyAdjustments: (id: string) => api.post<any>(`/inventory/${id}/apply-adjustments`),
+};
+
+export const requestApi = {
+    create: (data: { title: string; description?: string; storeId: string; priority?: string }) =>
+        api.post<any>('/requests', data),
+    updateStatus: (id: string, data: { status: string; assigneeId?: string }) =>
+        api.patch<any>(`/requests/${id}/status`, data),
+    addComment: (id: string, text: string) =>
+        api.post<any>(`/requests/${id}/comments`, { text }),
+};
+
+export const deliveryApi = {
+    updateStatus: (
+        id: string,
+        data: { status: string; courierName?: string; courierPhone?: string },
+    ) => api.patch<any>(`/deliveries/${id}/status`, data),
+    syncProvider: (id: string) => api.post<any>(`/deliveries/${id}/sync-provider`),
+};

@@ -1,10 +1,17 @@
 "use client";
 
+import Image from 'next/image';
+import { Russo_One } from 'next/font/google';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { Warehouse, Lock, Mail, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
+import { Lock, Mail, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+const brandFont = Russo_One({
+    subsets: ['latin', 'cyrillic'],
+    weight: '400',
+});
 
 export default function LoginPage() {
     const router = useRouter();
@@ -51,23 +58,17 @@ export default function LoginPage() {
                 <div className="bg-card/80 backdrop-blur-xl border border-border/50 rounded-3xl p-10 shadow-2xl">
                     {/* Logo - Medium-Large */}
                     <div className="flex flex-col items-center justify-center gap-5 mb-8">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/25">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="3"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="w-8 h-8 text-white"
-                            >
-                                <path d="M4 4l6 16 2.5-7 2.5 7 6-16" />
-                            </svg>
-                        </div>
+                        <Image
+                            src="/logo.png"
+                            alt="ВИНЛАБ"
+                            width={64}
+                            height={64}
+                            priority
+                            className="w-16 h-16 rounded-2xl object-cover shadow-lg shadow-purple-500/25"
+                        />
                         <div className="text-center">
-                            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-violet-600 to-purple-600 mb-1">WineLab</h1>
-                            <p className="text-base text-muted-foreground">Admin Panel</p>
+                            <h1 className={cn(brandFont.className, "text-3xl uppercase tracking-[0.08em] text-violet-300 mb-1")}>ВИНЛАБ</h1>
+                            <p className="text-base text-muted-foreground">Панель управления</p>
                         </div>
                     </div>
 

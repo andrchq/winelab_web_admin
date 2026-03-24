@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
-import "./globals.css";
+
 import { ClientWrapper } from "./client-wrapper";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "WineLab Admin - Управление складом и логистикой",
-  description: "SaaS панель управления складом, заявками и доставками оборудования WineLab",
+  title: "ВИНЛАБ | АДМ",
+  description: "SaaS панель управления складом, заявками и доставками оборудования ВИНЛАБ",
+  icons: {
+    icon: "/logo.svg",
+    shortcut: "/logo.svg",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({

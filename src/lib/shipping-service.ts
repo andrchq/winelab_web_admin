@@ -1,7 +1,14 @@
-import { InvoiceItem } from "./file-parser";
+import { api } from "./api";
+import { Asset, Shipment } from "@/types/api";
 
-export interface ShippingItem extends InvoiceItem {
-    productId: string; // ID from product catalog (required for shipping)
+export interface ShippingItem {
+    id: string;
+    productId: string;
+    originalName: string;
+    sku: string;
+    accountingType?: "SERIALIZED" | "QUANTITY";
+    quantity: number;
+    expectedQuantity: number;
     scannedQuantity: number;
     scans?: {
         id: string;
@@ -14,143 +21,148 @@ export interface ShippingItem extends InvoiceItem {
 
 export interface ShippingSession {
     id: string;
-    warehouseId: string; // Source warehouse
-    destination: string; // Destination (e.g., Store name or Warehouse name)
+    warehouseId: string;
+    destination: string;
+    destinationType: "store" | "warehouse" | "other";
+    destinationId?: string;
     items: ShippingItem[];
-    status: 'draft' | 'picking' | 'packed' | 'shipped';
+    status: "draft" | "picking" | "packed" | "shipped";
     createdAt: string;
     completedAt?: string;
-    requestNumber?: string; // Zayavka
-    type?: 'manual' | 'request';
+    requestNumber?: string;
+    invoiceNumber?: string;
+    supplier?: string;
+    type: "manual" | "file";
+    linkedReceivingId?: string;
+    request?: {
+        id: string;
+        title: string;
+        deliveryContactName?: string;
+        deliveryContactPhone?: string;
+        deliveryComment?: string;
+    };
+    delivery?: {
+        id: string;
+        status: string;
+        provider?: string;
+    };
 }
 
-const STORAGE_KEY = 'winelab_shipping_sessions';
+export interface StoreDeliveryPreview {
+    shipmentId: string;
+    provider: string;
+    canConfirm: boolean;
+    yandexConfigured: boolean;
+    warnings: string[];
+    source: {
+        warehouseId: string;
+        name: string;
+        address?: string;
+        contactName?: string;
+        phone?: string;
+        email?: string;
+    };
+    destination: {
+        storeId: string;
+        name: string;
+        address?: string;
+        contactName?: string;
+        phone?: string;
+        comment?: string;
+    };
+    items: {
+        id: string;
+        name: string;
+        sku?: string | null;
+        quantity: number;
+    }[];
+}
+
+type CreateShippingSessionInput = {
+    requestId?: string;
+    warehouseId: string;
+    destination: string;
+    destinationType: "store" | "warehouse" | "other";
+    destinationId?: string;
+    items: ShippingItem[];
+    requestNumber?: string;
+    invoiceNumber?: string;
+    supplier?: string;
+    type: "manual" | "file";
+};
+
+function normalizeShipment(payload: Shipment | ShippingSession): ShippingSession {
+    if ("destination" in payload && "items" in payload) {
+        return payload as ShippingSession;
+    }
+
+    throw new Error("Unsupported shipment payload");
+}
 
 export const shippingService = {
-    getAll: (): ShippingSession[] => {
-        if (typeof window === 'undefined') return [];
-        const data = localStorage.getItem(STORAGE_KEY);
-        return data ? JSON.parse(data) : [];
+    async getAll(): Promise<ShippingSession[]> {
+        const response = await api.get<ShippingSession[]>("/shipments");
+        return response.map((item) => normalizeShipment(item));
     },
 
-    getById: (id: string): ShippingSession | undefined => {
-        if (typeof window === 'undefined') return undefined;
-        const sessions = shippingService.getAll();
-        return sessions.find(s => s.id === id);
-    },
-
-    save: (session: ShippingSession) => {
-        const sessions = shippingService.getAll();
-        const index = sessions.findIndex(s => s.id === session.id);
-        if (index >= 0) {
-            sessions[index] = session;
-        } else {
-            sessions.push(session);
+    async getById(id: string): Promise<ShippingSession | undefined> {
+        try {
+            const response = await api.get<ShippingSession>(`/shipments/${id}`);
+            return normalizeShipment(response);
+        } catch {
+            return undefined;
         }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
     },
 
-    delete: (sessionId: string) => {
-        const sessions = shippingService.getAll();
-        const filtered = sessions.filter(s => s.id !== sessionId);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    async delete(sessionId: string) {
+        await api.delete(`/shipments/${sessionId}`);
     },
 
-    create: (data: Omit<ShippingSession, 'id' | 'createdAt' | 'status' | 'items'> & { items: ShippingItem[] }): ShippingSession => {
-        const session: ShippingSession = {
-            id: `SHP-${Date.now().toString().slice(-6)}`,
-            warehouseId: data.warehouseId,
-            destination: data.destination,
-            status: 'draft',
-            createdAt: new Date().toISOString(),
-            items: data.items.map(item => ({
-                ...item,
-                scannedQuantity: 0,
-                scans: []
-            })),
-            requestNumber: data.requestNumber,
-            type: data.type
-        };
-        shippingService.save(session);
-        return session;
+    async create(data: CreateShippingSessionInput): Promise<ShippingSession> {
+        const response = await api.post<ShippingSession>("/shipments", data);
+        return normalizeShipment(response);
     },
 
-    updateItem: (sessionId: string, itemId: string, delta: number, isManual = false, code?: string) => {
-        const session = shippingService.getById(sessionId);
-        if (!session) return null;
+    async addItem(sessionId: string, item: Omit<ShippingItem, "id" | "scannedQuantity" | "scans">): Promise<ShippingItem> {
+        return api.post<ShippingItem>(`/shipments/${sessionId}/lines`, {
+            productId: item.productId,
+            originalName: item.originalName,
+            sku: item.sku,
+            quantity: item.quantity,
+            expectedQuantity: item.expectedQuantity,
+        });
+    },
 
-        const itemIndex = session.items.findIndex(i => i.id === itemId);
-        if (itemIndex === -1) return null;
-
-        const item = session.items[itemIndex];
-
-        // Add scan record
-        if (!item.scans) item.scans = [];
-        item.scans.unshift({ // Add to beginning
-            id: Math.random().toString(36).substr(2, 9),
-            timestamp: Date.now(),
+    async updateItem(sessionId: string, itemId: string, delta: number, isManual = false, code?: string): Promise<ShippingSession> {
+        const response = await api.post<ShippingSession>(`/shipments/${sessionId}/lines/${itemId}/scans`, {
             quantity: delta,
             isManual,
-            code
+            code,
         });
-
-        // Update total
-        item.scannedQuantity = item.scans.reduce((acc, s) => acc + s.quantity, 0);
-
-        // Update session status if started
-        if (session.status === 'draft') session.status = 'picking';
-
-        shippingService.save(session);
-        return session;
+        return normalizeShipment(response);
     },
 
-    removeScan: (sessionId: string, itemId: string, scanId: string) => {
-        const session = shippingService.getById(sessionId);
-        if (!session) return null;
-
-        const itemIndex = session.items.findIndex(i => i.id === itemId);
-        if (itemIndex === -1) return null;
-
-        const item = session.items[itemIndex];
-        if (!item.scans) return session;
-
-        item.scans = item.scans.filter(s => s.id !== scanId);
-        item.scannedQuantity = item.scans.reduce((acc, s) => acc + s.quantity, 0);
-
-        shippingService.save(session);
-        return session;
+    async removeScan(sessionId: string, itemId: string, scanId: string): Promise<ShippingSession> {
+        const response = await api.delete<ShippingSession>(`/shipments/${sessionId}/lines/${itemId}/scans/${scanId}`);
+        return normalizeShipment(response);
     },
 
-    commit: async (sessionId: string) => {
-        const session = shippingService.getById(sessionId);
-        if (!session) throw new Error("Session not found");
+    async commit(sessionId: string): Promise<ShippingSession> {
+        const response = await api.post<ShippingSession>(`/shipments/${sessionId}/commit`);
+        return normalizeShipment(response);
+    },
 
-        const itemsToCommit = session.items
-            .filter(item => (item.scannedQuantity || 0) !== 0)
-            .map(item => ({
-                productId: item.productId,
-                quantity: item.scannedQuantity
-            }));
+    async getStoreDeliveryPreview(sessionId: string): Promise<StoreDeliveryPreview> {
+        return api.get<StoreDeliveryPreview>(`/shipments/${sessionId}/store-delivery-preview`);
+    },
 
-        if (itemsToCommit.length === 0) {
-            throw new Error("No items to commit");
-        }
+    async confirmStoreDelivery(sessionId: string): Promise<ShippingSession> {
+        const response = await api.post<ShippingSession>(`/shipments/${sessionId}/confirm-store-delivery`);
+        return normalizeShipment(response);
+    },
 
-        try {
-            const { api } = await import('@/lib/api');
-            await api.post('/shipments/commit', {
-                warehouseId: session.warehouseId,
-                destination: session.destination,
-                items: itemsToCommit
-            });
-
-            session.status = 'shipped';
-            session.completedAt = new Date().toISOString();
-            shippingService.save(session);
-            return true;
-        } catch (e) {
-            console.error(e);
-            throw e;
-        }
-    }
+    async findAssetBySerial(serial: string): Promise<Asset | null> {
+        const response = await api.get<Asset | null>(`/assets/serial/${encodeURIComponent(serial)}`);
+        return response;
+    },
 };

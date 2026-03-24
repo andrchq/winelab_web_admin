@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -9,7 +9,13 @@ export class WarehousesService {
         return this.prisma.warehouse.findMany({
             where: { isActive: true },
             include: {
-                stockItems: true,
+                stockItems: {
+                    include: {
+                        product: {
+                            include: { category: true }
+                        }
+                    }
+                },
             },
         });
     }
@@ -19,13 +25,13 @@ export class WarehousesService {
         });
     }
 
-    async create(data: { name: string; address?: string }) {
+    async create(data: { name: string; address?: string; contactName?: string; phone?: string; email?: string }) {
         return this.prisma.warehouse.create({
             data,
         });
     }
 
-    async update(id: string, data: { name?: string; address?: string }) {
+    async update(id: string, data: { name?: string; address?: string; contactName?: string; phone?: string; email?: string }) {
         return this.prisma.warehouse.update({
             where: { id },
             data,
@@ -40,15 +46,22 @@ export class WarehousesService {
     }
 
     async getDetails(id: string) {
-        // 1. Get Warehouse Info
         const warehouse = await this.prisma.warehouse.findUnique({
             where: { id },
             include: {
-                stockItems: true,
+                stockItems: {
+                    include: {
+                        product: {
+                            include: { category: true }
+                        }
+                    }
+                },
             }
         });
 
-        if (!warehouse) return null;
+        if (!warehouse) {
+            throw new NotFoundException('Склад не найден');
+        }
 
         // 2. Recent TP engineer requests (Shipments -> Requests created by Support)
         // Assuming "Engineer requests" means shipments from this warehouse linked to requests created by users with role SUPPORT or similar,
@@ -135,7 +148,7 @@ export class WarehousesService {
 
         // 5. Additional Stats
         const totalItems = warehouse.stockItems.reduce((acc, item) => acc + item.quantity, 0);
-        const lowStockItems = warehouse.stockItems.filter(item => item.quantity <= item.minQuantity).length;
+        const lowStockItems = warehouse.stockItems.filter(item => item.quantity - item.reserved <= item.minQuantity).length;
 
         return {
             ...warehouse,
@@ -144,13 +157,15 @@ export class WarehousesService {
                 lowStockPositions: lowStockItems,
                 // totalValue: ... if we had price
             },
-            recentRequests: recentRequests.map(r => ({
-                id: r.id,
-                date: r.createdAt,
-                engineer: r.request.creator,
-                store: r.request.store,
-                itemsCount: r.items.length
-            })),
+            recentRequests: recentRequests
+                .filter((r) => r.request)
+                .map(r => ({
+                    id: r.id,
+                    date: r.createdAt,
+                    engineer: r.request!.creator,
+                    store: r.request!.store,
+                    itemsCount: r.items.length
+                })),
             recentInstallations: recentInstallations.map(d => ({
                 id: d.id,
                 date: d.deliveredAt || d.createdAt,

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { TSDDashboard } from "@/components/tsd/TSDDashboard";
+import { ScanBarcode, Smartphone } from "lucide-react";
 
 interface TSDModeContextType {
     isTSDMode: boolean;
@@ -68,10 +69,23 @@ export function TSDModeProvider({ children }: { children: React.ReactNode }) {
 
         // Check if user already made a choice
         const stored = localStorage.getItem('winelab_tsd_mode');
-        if (stored === 'true' || stored === 'false') {
-            // User already decided, don't prompt again
+        if (stored === 'true') {
+            // User enabled TSD mode explicitly
             setShowPrompt(false);
             return;
+        }
+
+        // Check if prompt was dismissed recently (within 2 hours)
+        const dismissedAt = localStorage.getItem('winelab_tsd_prompt_dismissed');
+        if (dismissedAt) {
+            const dismissedTime = parseInt(dismissedAt, 10);
+            const twoHours = 2 * 60 * 60 * 1000;
+
+            // If less than 2 hours passed since dismissal, don't show
+            if (Date.now() - dismissedTime < twoHours) {
+                setShowPrompt(false);
+                return;
+            }
         }
 
         // Detect Mobile and show prompt only if no decision was made yet
@@ -104,22 +118,42 @@ export function TSDModeProvider({ children }: { children: React.ReactNode }) {
         }, 300);
     };
 
+    const dismissPrompt = () => {
+        localStorage.setItem('winelab_tsd_prompt_dismissed', Date.now().toString());
+        setShowPrompt(false);
+    };
+
     return (
         <TSDModeContext.Provider value={{ isTSDMode, isExitingTSD, setIsTSDMode, enableTSDMode, disableTSDMode }}>
             {/* Global Prompt for mobile devices */}
             {showPrompt && (
-                <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-card border border-border rounded-xl shadow-2xl max-w-sm w-full p-6 space-y-4 animate-spring-in">
-                        <h2 className="text-xl font-bold">Мобильный режим (TEST)</h2>
-                        <p className="text-muted-foreground">
-                            Вы зашли с мобильного устройства. Перейти в режим сканера (TSD)?
-                        </p>
+                <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-md flex items-end sm:items-center justify-center p-4 pb-8 sm:pb-4">
+                    <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-6 animate-in slide-in-from-bottom-10 fade-in duration-300">
+                        <div className="flex flex-col items-center text-center space-y-2">
+                            <div className="p-4 bg-primary/10 rounded-full mb-2">
+                                <Smartphone className="w-8 h-8 text-primary" />
+                            </div>
+                            <h2 className="text-2xl font-bold">Режим TSD</h2>
+                            <p className="text-muted-foreground text-base">
+                                Мы обнаружили, что вы используете мобильное устройство. Перейти в режим сканера?
+                            </p>
+                        </div>
+
                         <div className="flex flex-col gap-3">
-                            <Button className="w-full" size="lg" onClick={enableTSDMode}>
-                                Да, перейти
+                            <Button
+                                className="w-full h-14 text-lg font-semibold rounded-xl"
+                                size="lg"
+                                onClick={enableTSDMode}
+                            >
+                                <ScanBarcode className="mr-2 h-5 w-5" />
+                                Перейти в режим TSD
                             </Button>
-                            <Button variant="outline" className="w-full" onClick={disableTSDMode}>
-                                Нет, обычная версия
+                            <Button
+                                variant="outline"
+                                className="w-full h-14 text-base font-medium rounded-xl border-2"
+                                onClick={dismissPrompt}
+                            >
+                                Обычная версия
                             </Button>
                         </div>
                     </div>

@@ -30,14 +30,14 @@ export class StockController {
     @Post()
     @RequirePermissions(SystemPermission.STOCK_UPDATE)
     @ApiOperation({ summary: 'Создать позицию или добавить количество' })
-    async create(@Body() data: { productId: string; warehouseId: string; quantity: number; minQuantity?: number }) {
+    async create(@Body() data: { productId: string; warehouseId: string; quantity: number; minQuantity?: number; reserved?: number }) {
         return this.stockService.create(data);
     }
 
     @Patch(':id')
     @RequirePermissions(SystemPermission.STOCK_UPDATE)
     @ApiOperation({ summary: 'Обновить параметры позиции' })
-    async update(@Param('id') id: string, @Body() data: { minQuantity?: number }) {
+    async update(@Param('id') id: string, @Body() data: { quantity?: number; reserved?: number; minQuantity?: number }) {
         return this.stockService.update(id, data);
     }
 

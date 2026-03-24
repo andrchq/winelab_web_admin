@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
-import { useWarehouse, useProducts } from "@/lib/hooks";
+import { useWarehouse } from "@/lib/hooks";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, StatCard } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Warehouse, MapPin, Package, AlertTriangle, User as UserIcon, Store as StoreIcon, Activity } from "lucide-react";
@@ -18,7 +18,6 @@ export default function WarehouseDetailsPage() {
     const [showAllSufficient, setShowAllSufficient] = useState(false);
 
     const { data: warehouse, isLoading, error } = useWarehouse(id);
-    const { data: products } = useProducts();
 
     const categoryOrder = [
         "Сервер",
@@ -37,11 +36,6 @@ export default function WarehouseDetailsPage() {
         "Сканер"
     ];
 
-    const productsMap = useMemo(() => {
-        if (!products) return new Map();
-        return new Map(products.map(p => [p.id, p]));
-    }, [products]);
-
     const getCategoryIndex = (name: string) => {
         const index = categoryOrder.findIndex(cat => name.toLowerCase().includes(cat.toLowerCase()));
         return index === -1 ? 999 : index;
@@ -50,14 +44,12 @@ export default function WarehouseDetailsPage() {
     const criticalItems = useMemo(() => {
         if (!warehouse?.stockItems) return [];
         return warehouse.stockItems
-            .filter(item => item.quantity <= item.minQuantity)
-            .map(item => ({
-                ...item,
-                product: productsMap.get(item.productId) || item.product
-            }))
+            .filter(item => item.quantity - item.reserved <= item.minQuantity)
             .sort((a, b) => {
                 // First sort by quantity (ascending)
-                if (a.quantity !== b.quantity) return a.quantity - b.quantity;
+                const availableA = a.quantity - a.reserved;
+                const availableB = b.quantity - b.reserved;
+                if (availableA !== availableB) return availableA - availableB;
 
                 // Then by category priority
                 const catA = a.product?.category?.name || "";
@@ -70,16 +62,12 @@ export default function WarehouseDetailsPage() {
                 // Finally by product name
                 return (a.product?.name || "").localeCompare(b.product?.name || "");
             });
-    }, [warehouse, productsMap]);
+    }, [warehouse]);
 
     const sufficientItems = useMemo(() => {
         if (!warehouse?.stockItems) return [];
         return warehouse.stockItems
-            .filter(item => item.quantity > item.minQuantity)
-            .map(item => ({
-                ...item,
-                product: productsMap.get(item.productId) || item.product
-            }))
+            .filter(item => item.quantity - item.reserved > item.minQuantity)
             .sort((a, b) => {
                 const catA = a.product?.category?.name || "";
                 const catB = b.product?.category?.name || "";
@@ -89,7 +77,7 @@ export default function WarehouseDetailsPage() {
                 if (indexA !== indexB) return indexA - indexB;
                 return (a.product?.name || "").localeCompare(b.product?.name || "");
             });
-    }, [warehouse, productsMap]);
+    }, [warehouse]);
 
     const formatDate = (dateString: string) => {
         if (!dateString) return "";

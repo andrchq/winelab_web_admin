@@ -26,7 +26,7 @@ export class WarehousesController {
     @RequirePermissions(SystemPermission.WAREHOUSE_READ)
     @ApiOperation({ summary: 'Получить склад' })
     async findOne(@Param('id') id: string) {
-        return this.warehousesService.findById(id);
+        return this.warehousesService.getDetails(id);
     }
 
     @Post()

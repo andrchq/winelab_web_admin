@@ -19,6 +19,7 @@ import * as XLSX from 'xlsx';
 
 interface ImportStoresDialogProps {
     onSuccess?: () => void;
+    existingStores?: any[];
 }
 
 interface ColumnInfo {
@@ -31,6 +32,7 @@ interface ColumnInfo {
 interface FilePreview {
     totalRows: number;
     validRows: number;
+    existingRows: number;
     missingFields: number;
     duplicates: number;
     columns: string[];
@@ -42,7 +44,7 @@ interface FilePreview {
 const REQUIRED_COLUMNS = ['SAP', 'Address'];
 const EXPECTED_COLUMNS = ['SAP', 'ЦФО', 'Город', 'Address', 'Юр.лицо', 'ip Сервера', 'Telephone', 'ИНН', 'КПП', 'ФСРАР'];
 
-export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
+export function ImportStoresDialog({ onSuccess, existingStores }: ImportStoresDialogProps) {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [validating, setValidating] = useState(false);
@@ -72,6 +74,10 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const selectedFile = e.target.files[0];
+            const existingSapCodes = new Set(
+                (existingStores || []).map(s => String(s.name).toLowerCase())
+            );
+
             setFile(selectedFile);
             setResult(null);
             setPreview(null);
@@ -79,7 +85,7 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
             // Validate file
             setValidating(true);
             try {
-                const filePreview = await validateXLSXFile(selectedFile);
+                const filePreview = await validateXLSXFile(selectedFile, existingSapCodes);
                 setPreview(filePreview);
             } catch (error: any) {
                 toast.error("Ошибка чтения файла: " + error.message);
@@ -89,7 +95,7 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
         }
     };
 
-    const validateXLSXFile = async (file: File): Promise<FilePreview> => {
+    const validateXLSXFile = async (file: File, existingSapCodes: Set<string>): Promise<FilePreview> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -113,8 +119,9 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
 
                     // Count valid rows (with SAP and Address)
                     let validRows = 0;
+                    let existingRows = 0;
                     let missingFields = 0;
-                    const sapValues = new Set<string>();
+                    const sapValuesInFile = new Set<string>();
                     let duplicates = 0;
 
                     // Track column fill statistics
@@ -126,11 +133,19 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
                         const address = row['Address'] || row['address'] || row['Адрес'];
 
                         if (sap && address) {
-                            if (sapValues.has(String(sap))) {
+                            const sapStr = String(sap);
+                            const sapLower = sapStr.toLowerCase();
+
+                            if (sapValuesInFile.has(sapLower)) {
                                 duplicates++;
                             } else {
-                                sapValues.add(String(sap));
-                                validRows++;
+                                sapValuesInFile.add(sapLower);
+
+                                if (existingSapCodes.has(sapLower)) {
+                                    existingRows++;
+                                } else {
+                                    validRows++;
+                                }
                             }
                         } else {
                             missingFields++;
@@ -171,6 +186,7 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
                     resolve({
                         totalRows: jsonData.length,
                         validRows,
+                        existingRows,
                         missingFields,
                         duplicates,
                         columns,
@@ -221,7 +237,18 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
         }
     };
 
-    const canUpload = preview && preview.validRows > 0 && preview.issues.filter(i => i.includes('Отсутствуют обязательные')).length === 0;
+    const canUpload = preview &&
+        (preview.validRows > 0 || preview.existingRows > 0) &&
+        preview.issues.filter(i => i.includes('Отсутствуют обязательные')).length === 0;
+
+    const getRowsPlural = (count: number) => {
+        const lastDigit = count % 10;
+        const lastTwoDigits = count % 100;
+        if (lastTwoDigits >= 11 && lastTwoDigits <= 19) return "строк";
+        if (lastDigit === 1) return "строку";
+        if (lastDigit >= 2 && lastDigit <= 4) return "строки";
+        return "строк";
+    };
 
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -277,22 +304,26 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
                         {preview && !validating && (
                             <div className="space-y-4">
                                 {/* Stats Grid */}
-                                <div className="grid grid-cols-4 gap-2 text-center">
-                                    <div className="bg-muted/30 p-3 rounded-lg border">
-                                        <div className="text-xl font-bold">{preview.totalRows}</div>
-                                        <div className="text-xs text-muted-foreground">Всего строк</div>
+                                <div className="grid grid-cols-5 gap-2 text-center">
+                                    <div className="bg-muted/30 p-2 rounded-lg border">
+                                        <div className="text-lg font-bold">{preview.totalRows}</div>
+                                        <div className="text-[10px] text-muted-foreground">Всего</div>
                                     </div>
-                                    <div className="bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20">
-                                        <div className="text-xl font-bold text-emerald-600">{preview.validRows}</div>
-                                        <div className="text-xs text-emerald-600/80">Будет добавлено</div>
+                                    <div className="bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
+                                        <div className="text-lg font-bold text-emerald-600">{preview.validRows}</div>
+                                        <div className="text-[10px] text-emerald-600/80">Новых</div>
                                     </div>
-                                    <div className="bg-amber-500/10 p-3 rounded-lg border border-amber-500/20">
-                                        <div className="text-xl font-bold text-amber-600">{preview.duplicates}</div>
-                                        <div className="text-xs text-amber-600/80">Дубликатов</div>
+                                    <div className="bg-blue-500/10 p-2 rounded-lg border border-blue-500/20">
+                                        <div className="text-lg font-bold text-blue-600">{preview.existingRows}</div>
+                                        <div className="text-[10px] text-blue-600/80">Обновится</div>
                                     </div>
-                                    <div className="bg-red-500/10 p-3 rounded-lg border border-red-500/20">
-                                        <div className="text-xl font-bold text-red-600">{preview.missingFields}</div>
-                                        <div className="text-xs text-red-600/80">Пропущено</div>
+                                    <div className="bg-amber-500/10 p-2 rounded-lg border border-amber-500/20">
+                                        <div className="text-lg font-bold text-amber-600">{preview.duplicates}</div>
+                                        <div className="text-[10px] text-amber-600/80">В файле</div>
+                                    </div>
+                                    <div className="bg-red-500/10 p-2 rounded-lg border border-red-500/20">
+                                        <div className="text-lg font-bold text-red-600">{preview.missingFields}</div>
+                                        <div className="text-[10px] text-red-600/80">Ошибки</div>
                                     </div>
                                 </div>
 
@@ -403,7 +434,7 @@ export function ImportStoresDialog({ onSuccess }: ImportStoresDialogProps) {
                     {!result ? (
                         <Button onClick={handleUpload} disabled={!canUpload || loading}>
                             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {preview ? `Загрузить ${preview.validRows} магазинов` : 'Загрузить'}
+                            {preview ? `Обработать ${preview.validRows + preview.existingRows} ${getRowsPlural(preview.validRows + preview.existingRows)}` : 'Загрузить'}
                         </Button>
                     ) : (
                         <Button onClick={() => setOpen(false)}>

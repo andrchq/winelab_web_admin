@@ -17,10 +17,13 @@ import { Badge } from "@/components/ui/badge";
 import { ManualInvoiceDialog } from "@/components/receiving/ManualInvoiceDialog";
 import { PlusCircle } from "lucide-react";
 
+import { useTSDMode } from "@/contexts/TSDModeContext";
+
 export default function NewReceivingPage() {
     const router = useRouter();
     const { data: warehouses, isLoading: isWarehousesLoading } = useWarehouses();
     const { data: products, isLoading: isProductsLoading } = useProducts();
+    const { isTSDMode } = useTSDMode();
 
     const [step, setStep] = useState<"upload" | "mapping" | "review">("upload");
     const [warehouseId, setWarehouseId] = useState<string>("");
@@ -33,6 +36,10 @@ export default function NewReceivingPage() {
 
     // Mapping: invoiceItemId -> productId
     const [mapping, setMapping] = useState<Record<string, string>>({});
+
+    const handleCancel = () => {
+        router.push('/receiving');
+    };
 
     // Step 1: Handle File Upload
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -221,16 +228,7 @@ export default function NewReceivingPage() {
                                 </div>
                             </div>
 
-                            <Button
-                                variant="secondary"
-                                className="w-full h-12 dashed border-2"
-                                onClick={() => setIsManualDialogOpen(true)}
-                                disabled={!warehouseId}
-                                title={!warehouseId ? "Сначала выберите склад" : ""}
-                            >
-                                <PlusCircle className="mr-2 h-5 w-5" />
-                                Создать накладную вручную
-                            </Button>
+
 
                             {parsedItems.length > 0 && (
                                 <div className="rounded-md border p-4 bg-card/50">
@@ -250,8 +248,28 @@ export default function NewReceivingPage() {
                                 </div>
                             )}
                         </CardContent>
-                        <CardFooter>
-                            <Button className="w-full" onClick={handleContinueToMapping} disabled={!warehouseId || !file || parsedItems.length === 0}>
+                        <CardFooter className="px-2 md:px-6 flex flex-col md:flex-row gap-3">
+                            <Button
+                                className="w-full md:w-auto h-10 md:h-12 order-3 md:order-1"
+                                variant="ghost"
+                                onClick={handleCancel}
+                            >
+                                Отмена
+                            </Button>
+                            <Button
+                                className="w-full md:w-1/2 h-10 md:h-12 order-2"
+                                variant="outline"
+                                onClick={() => setIsManualDialogOpen(true)}
+                                disabled={!warehouseId}
+                            >
+                                <PlusCircle className="mr-2 h-5 w-5" />
+                                Создать вручную
+                            </Button>
+                            <Button
+                                className="w-full md:w-1/2 h-10 md:h-12 order-1 md:order-3"
+                                onClick={handleContinueToMapping}
+                                disabled={!warehouseId || !file || parsedItems.length === 0}
+                            >
                                 Продолжить <ArrowRight className="ml-2 h-4 w-4" />
                             </Button>
                         </CardFooter>
@@ -262,7 +280,7 @@ export default function NewReceivingPage() {
                     <Card className="flex flex-col h-[calc(100vh-200px)]">
                         <CardHeader>
                             <CardTitle>Сопоставление товаров</CardTitle>
-                            <CardDescription>
+                            <div className="text-sm text-muted-foreground">
                                 Свяжите позиции из накладной с товарами в каталоге.
                                 <div className="mt-2 flex items-center gap-2">
                                     <div className="h-2 flex-1 bg-secondary rounded-full overflow-hidden">
@@ -270,7 +288,7 @@ export default function NewReceivingPage() {
                                     </div>
                                     <span className="text-xs font-mono">{progress}%</span>
                                 </div>
-                            </CardDescription>
+                            </div>
                         </CardHeader>
                         <CardContent className="flex-1 overflow-hidden p-0">
                             <div className="h-full overflow-y-auto p-6 space-y-4">

@@ -1,29 +1,21 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# Hide console window
-Add-Type -Name Window -Namespace Console -MemberDefinition '
-[DllImport("Kernel32.dll")]
-public static extern IntPtr GetConsoleWindow();
-[DllImport("user32.dll")]
-public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
-'
-$consolePtr = [Console.Window]::GetConsoleWindow()
-[Console.Window]::ShowWindow($consolePtr, 0) | Out-Null
-
 # Styling
 [System.Windows.Forms.Application]::EnableVisualStyles()
+
+# Global regex to clean ANSI codes
+$script:ansiRegex = [regex]::new('\x1B\[[0-9;]*[a-zA-Z]')
 
 # Main Form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "WineLab Dev Manager"
-$form.Size = New-Object System.Drawing.Size(500, 470)
+$form.Size = New-Object System.Drawing.Size(520, 610)
 $form.StartPosition = "CenterScreen"
-$form.FormBorderStyle = "FixedSingle"
-$form.MaximizeBox = $false
 $form.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 35)
 $form.ForeColor = [System.Drawing.Color]::White
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$form.MinimumSize = New-Object System.Drawing.Size(520, 610)
 
 # Title Label
 $titleLabel = New-Object System.Windows.Forms.Label
@@ -31,14 +23,16 @@ $titleLabel.Text = "WineLab Dev Manager"
 $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
 $titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(139, 92, 246)
 $titleLabel.Location = New-Object System.Drawing.Point(20, 15)
-$titleLabel.Size = New-Object System.Drawing.Size(450, 40)
+$titleLabel.Size = New-Object System.Drawing.Size(460, 40)
+$titleLabel.Anchor = "Top, Left, Right"
 $form.Controls.Add($titleLabel)
 
 # Status Panel
 $statusPanel = New-Object System.Windows.Forms.Panel
 $statusPanel.Location = New-Object System.Drawing.Point(20, 65)
-$statusPanel.Size = New-Object System.Drawing.Size(445, 90)
+$statusPanel.Size = New-Object System.Drawing.Size(460, 90)
 $statusPanel.BackColor = [System.Drawing.Color]::FromArgb(40, 40, 50)
+$statusPanel.Anchor = "Top, Left, Right"
 $form.Controls.Add($statusPanel)
 
 # API Status
@@ -76,7 +70,7 @@ $frontendStatus.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Dr
 $statusPanel.Controls.Add($frontendStatus)
 
 # pgAdmin Configuration
-$pgAdminPath = "E:\Posgres 18\pgAdmin 4\runtime\pgAdmin4.exe"
+$pgAdminPath = "A:\Program\PosgreSQL\18\pgAdmin 4\runtime\pgAdmin4.exe"
 
 # pgAdmin Status
 $pgAdminStatusLabel = New-Object System.Windows.Forms.Label
@@ -97,24 +91,131 @@ $statusPanel.Controls.Add($pgAdminStatus)
 
 # Log Label
 $logLabel = New-Object System.Windows.Forms.Label
-$logLabel.Text = "Console Log:"
+$logLabel.Text = "Log View:"
 $logLabel.Location = New-Object System.Drawing.Point(20, 165)
-$logLabel.Size = New-Object System.Drawing.Size(200, 20)
+$logLabel.Size = New-Object System.Drawing.Size(80, 20)
 $logLabel.ForeColor = [System.Drawing.Color]::Gray
 $logLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $form.Controls.Add($logLabel)
 
-# Log TextBox
+# Buttons for selecting logs
+$btnLogManager = New-Object System.Windows.Forms.Button
+$btnLogManager.Text = "Manager"
+$btnLogManager.Location = New-Object System.Drawing.Point(105, 160)
+$btnLogManager.Size = New-Object System.Drawing.Size(80, 25)
+$btnLogManager.FlatStyle = "Flat"
+$btnLogManager.FlatAppearance.BorderSize = 0
+$btnLogManager.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 60)
+$btnLogManager.ForeColor = [System.Drawing.Color]::White
+$btnLogManager.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$btnLogManager.Cursor = [System.Windows.Forms.Cursors]::Hand
+
+$btnLogApi = New-Object System.Windows.Forms.Button
+$btnLogApi.Text = "API"
+$btnLogApi.Location = New-Object System.Drawing.Point(195, 160)
+$btnLogApi.Size = New-Object System.Drawing.Size(80, 25)
+$btnLogApi.FlatStyle = "Flat"
+$btnLogApi.FlatAppearance.BorderSize = 0
+$btnLogApi.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 60)
+$btnLogApi.ForeColor = [System.Drawing.Color]::White
+$btnLogApi.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$btnLogApi.Cursor = [System.Windows.Forms.Cursors]::Hand
+
+$btnLogFrontend = New-Object System.Windows.Forms.Button
+$btnLogFrontend.Text = "Frontend"
+$btnLogFrontend.Location = New-Object System.Drawing.Point(285, 160)
+$btnLogFrontend.Size = New-Object System.Drawing.Size(80, 25)
+$btnLogFrontend.FlatStyle = "Flat"
+$btnLogFrontend.FlatAppearance.BorderSize = 0
+$btnLogFrontend.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 60)
+$btnLogFrontend.ForeColor = [System.Drawing.Color]::White
+$btnLogFrontend.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$btnLogFrontend.Cursor = [System.Windows.Forms.Cursors]::Hand
+
+$btnClearLog = New-Object System.Windows.Forms.Button
+$btnClearLog.Text = "Clear Log"
+$btnClearLog.Location = New-Object System.Drawing.Point(380, 160)
+$btnClearLog.Size = New-Object System.Drawing.Size(100, 25)
+$btnClearLog.FlatStyle = "Flat"
+$btnClearLog.FlatAppearance.BorderSize = 0
+$btnClearLog.BackColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
+$btnClearLog.ForeColor = [System.Drawing.Color]::White
+$btnClearLog.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$btnClearLog.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnClearLog.Anchor = "Top, Right"
+
+$form.Controls.Add($btnLogManager)
+$form.Controls.Add($btnLogApi)
+$form.Controls.Add($btnLogFrontend)
+$form.Controls.Add($btnClearLog)
+
+# Log TextBoxes
 $logBox = New-Object System.Windows.Forms.TextBox
 $logBox.Multiline = $true
 $logBox.ScrollBars = "Vertical"
-$logBox.Location = New-Object System.Drawing.Point(20, 188)
-$logBox.Size = New-Object System.Drawing.Size(445, 130)
+$logBox.Location = New-Object System.Drawing.Point(20, 195)
+$logBox.Size = New-Object System.Drawing.Size(460, 250)
 $logBox.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 25)
 $logBox.ForeColor = [System.Drawing.Color]::FromArgb(74, 222, 128)
 $logBox.Font = New-Object System.Drawing.Font("Consolas", 9)
 $logBox.ReadOnly = $true
+$logBox.Anchor = "Top, Bottom, Left, Right"
 $form.Controls.Add($logBox)
+
+$apiLogBox = New-Object System.Windows.Forms.TextBox
+$apiLogBox.Multiline = $true
+$apiLogBox.ScrollBars = "Vertical"
+$apiLogBox.Location = $logBox.Location
+$apiLogBox.Size = $logBox.Size
+$apiLogBox.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 25)
+$apiLogBox.ForeColor = [System.Drawing.Color]::White
+$apiLogBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+$apiLogBox.ReadOnly = $true
+$apiLogBox.Visible = $false
+$apiLogBox.Anchor = "Top, Bottom, Left, Right"
+$form.Controls.Add($apiLogBox)
+
+$frontendLogBox = New-Object System.Windows.Forms.TextBox
+$frontendLogBox.Multiline = $true
+$frontendLogBox.ScrollBars = "Vertical"
+$frontendLogBox.Location = $logBox.Location
+$frontendLogBox.Size = $logBox.Size
+$frontendLogBox.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 25)
+$frontendLogBox.ForeColor = [System.Drawing.Color]::White
+$frontendLogBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+$frontendLogBox.ReadOnly = $true
+$frontendLogBox.Visible = $false
+$frontendLogBox.Anchor = "Top, Bottom, Left, Right"
+$form.Controls.Add($frontendLogBox)
+
+# Highlight active log button
+function Update-LogButtons {
+    param($activeBtn)
+    $btnLogManager.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 60)
+    $btnLogApi.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 60)
+    $btnLogFrontend.BackColor = [System.Drawing.Color]::FromArgb(50, 50, 60)
+    $activeBtn.BackColor = [System.Drawing.Color]::FromArgb(139, 92, 246)
+}
+
+$btnLogManager.Add_Click({
+    $logBox.Visible = $true; $apiLogBox.Visible = $false; $frontendLogBox.Visible = $false;
+    Update-LogButtons $btnLogManager
+})
+$btnLogApi.Add_Click({
+    $logBox.Visible = $false; $apiLogBox.Visible = $true; $frontendLogBox.Visible = $false;
+    Update-LogButtons $btnLogApi
+})
+$btnLogFrontend.Add_Click({
+    $logBox.Visible = $false; $apiLogBox.Visible = $false; $frontendLogBox.Visible = $true;
+    Update-LogButtons $btnLogFrontend
+})
+Update-LogButtons $btnLogManager
+
+$btnClearLog.Add_Click({
+    if ($logBox.Visible) { $logBox.Clear() }
+    if ($apiLogBox.Visible) { $apiLogBox.Clear() }
+    if ($frontendLogBox.Visible) { $frontendLogBox.Clear() }
+})
 
 # Helper function to log
 function Write-Log {
@@ -198,9 +299,34 @@ function Stop-Port {
     }
 }
 
-# Store launched process IDs
+# Store launched process IDs and log info
 $script:apiProcessId = $null
 $script:frontendProcessId = $null
+$script:apiLogFile = Join-Path $env:TEMP "WineLab_API_$(Get-Random).log"
+$script:frontendLogFile = Join-Path $env:TEMP "WineLab_Frontend_$(Get-Random).log"
+$script:apiLogPos = 0
+$script:frontendLogPos = 0
+
+function Start-ApiServer {
+    Write-Log "Starting API server..."
+    $apiLogBox.Clear()
+    $script:apiLogPos = 0
+    New-Item -Path $script:apiLogFile -ItemType File -Force | Out-Null
+    $apiPath = Join-Path $script:scriptDir "winelab_api"
+    
+    $proc = Start-Process -FilePath "powershell.exe" -ArgumentList "-WindowStyle Hidden -Command `"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; cd '$apiPath'; npm run start:dev 2>&1 | Out-File -FilePath '$script:apiLogFile' -Encoding UTF8`"" -WindowStyle Hidden -PassThru
+    $script:apiProcessId = $proc.Id
+}
+
+function Start-FrontendServer {
+    Write-Log "Starting Frontend server..."
+    $frontendLogBox.Clear()
+    $script:frontendLogPos = 0
+    New-Item -Path $script:frontendLogFile -ItemType File -Force | Out-Null
+    
+    $proc = Start-Process -FilePath "powershell.exe" -ArgumentList "-WindowStyle Hidden -Command `"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; cd '$script:scriptDir'; npm run dev 2>&1 | Out-File -FilePath '$script:frontendLogFile' -Encoding UTF8`"" -WindowStyle Hidden -PassThru
+    $script:frontendProcessId = $proc.Id
+}
 
 # Stop launched PowerShell windows
 function Stop-LaunchedProcesses {
@@ -265,53 +391,56 @@ function Style-Button {
 # START Button
 $startButton = New-Object System.Windows.Forms.Button
 $startButton.Text = "START ALL"
-$startButton.Location = New-Object System.Drawing.Point(20, 330)
-$startButton.Size = New-Object System.Drawing.Size(105, 45)
+$startButton.Location = New-Object System.Drawing.Point(20, 460)
+$startButton.Size = New-Object System.Drawing.Size(110, 45)
+$startButton.Anchor = "Bottom"
 Style-Button $startButton ([System.Drawing.Color]::FromArgb(34, 197, 94))
 $form.Controls.Add($startButton)
 
 # STOP Button
 $stopButton = New-Object System.Windows.Forms.Button
 $stopButton.Text = "STOP ALL"
-$stopButton.Location = New-Object System.Drawing.Point(130, 330)
-$stopButton.Size = New-Object System.Drawing.Size(105, 45)
+$stopButton.Location = New-Object System.Drawing.Point(140, 460)
+$stopButton.Size = New-Object System.Drawing.Size(110, 45)
+$stopButton.Anchor = "Bottom"
 Style-Button $stopButton ([System.Drawing.Color]::FromArgb(239, 68, 68))
 $form.Controls.Add($stopButton)
 
 # RESTART Button
 $restartButton = New-Object System.Windows.Forms.Button
 $restartButton.Text = "RESTART"
-$restartButton.Location = New-Object System.Drawing.Point(240, 330)
-$restartButton.Size = New-Object System.Drawing.Size(105, 45)
+$restartButton.Location = New-Object System.Drawing.Point(260, 460)
+$restartButton.Size = New-Object System.Drawing.Size(100, 45)
+$restartButton.Anchor = "Bottom"
 Style-Button $restartButton ([System.Drawing.Color]::FromArgb(251, 146, 60))
 $form.Controls.Add($restartButton)
 
 # OPEN Browser Button
 $openButton = New-Object System.Windows.Forms.Button
 $openButton.Text = "BROWSER"
-$openButton.Location = New-Object System.Drawing.Point(350, 330)
-$openButton.Size = New-Object System.Drawing.Size(115, 45)
+$openButton.Location = New-Object System.Drawing.Point(370, 460)
+$openButton.Size = New-Object System.Drawing.Size(110, 45)
+$openButton.Anchor = "Bottom"
 Style-Button $openButton ([System.Drawing.Color]::FromArgb(59, 130, 246))
 $form.Controls.Add($openButton)
 
 # Start pgAdmin Button
 $startPgButton = New-Object System.Windows.Forms.Button
 $startPgButton.Text = "Start pgAdmin"
-$startPgButton.Location = New-Object System.Drawing.Point(20, 385)
-$startPgButton.Size = New-Object System.Drawing.Size(215, 35)
+$startPgButton.Location = New-Object System.Drawing.Point(20, 515)
+$startPgButton.Size = New-Object System.Drawing.Size(230, 35)
+$startPgButton.Anchor = "Bottom"
 Style-Button $startPgButton ([System.Drawing.Color]::FromArgb(72, 187, 120))
 $form.Controls.Add($startPgButton)
 
 # Stop pgAdmin Button
 $stopPgButton = New-Object System.Windows.Forms.Button
 $stopPgButton.Text = "Stop pgAdmin"
-$stopPgButton.Location = New-Object System.Drawing.Point(240, 385)
-$stopPgButton.Size = New-Object System.Drawing.Size(225, 35)
+$stopPgButton.Location = New-Object System.Drawing.Point(260, 515)
+$stopPgButton.Size = New-Object System.Drawing.Size(220, 35)
+$stopPgButton.Anchor = "Bottom"
 Style-Button $stopPgButton ([System.Drawing.Color]::FromArgb(220, 38, 38))
 $form.Controls.Add($stopPgButton)
-
-# Increase form size to fit new buttons
-$form.Size = New-Object System.Drawing.Size(500, 480)
 
 # Get script directory
 $script:scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -325,18 +454,12 @@ $startButton.Add_Click({
     
     Start-PgAdmin
 
-    Write-Log "Starting API server..."
-    $apiPath = Join-Path $script:scriptDir "winelab_api"
-    $apiProc = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$apiPath'; npm run start:dev" -WindowStyle Minimized -PassThru
-    $script:apiProcessId = $apiProc.Id
-    
+    Start-ApiServer
     Start-Sleep -Seconds 2
     
-    Write-Log "Starting Frontend server..."
-    $frontendProc = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$script:scriptDir'; npm run dev" -WindowStyle Minimized -PassThru
-    $script:frontendProcessId = $frontendProc.Id
-    
+    Start-FrontendServer
     Start-Sleep -Seconds 2
+    
     Update-Status
     Write-Log "All servers started!"
 })
@@ -362,18 +485,12 @@ $restartButton.Add_Click({
 
     Start-PgAdmin
     
-    Write-Log "Starting API server..."
-    $apiPath = Join-Path $script:scriptDir "winelab_api"
-    $apiProc = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$apiPath'; npm run start:dev" -WindowStyle Minimized -PassThru
-    $script:apiProcessId = $apiProc.Id
-    
+    Start-ApiServer
     Start-Sleep -Seconds 2
     
-    Write-Log "Starting Frontend server..."
-    $frontendProc = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$script:scriptDir'; npm run dev" -WindowStyle Minimized -PassThru
-    $script:frontendProcessId = $frontendProc.Id
-    
+    Start-FrontendServer
     Start-Sleep -Seconds 2
+    
     Update-Status
     Write-Log "All servers restarted!"
 })
@@ -399,8 +516,68 @@ $stopPgButton.Add_Click({
 
 # Timer for status updates
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 3000
-$timer.Add_Tick({ Update-Status })
+$timer.Interval = 2000
+$timer.Add_Tick({ 
+    Update-Status 
+    
+    # Process API Log
+    if (Test-Path $script:apiLogFile) {
+        try {
+            $fs = [System.IO.File]::Open($script:apiLogFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+            if ($fs.Length -gt $script:apiLogPos) {
+                $fs.Seek($script:apiLogPos, [System.IO.SeekOrigin]::Begin) | Out-Null
+                $reader = New-Object System.IO.StreamReader($fs, [System.Text.Encoding]::UTF8)
+                $newData = $reader.ReadToEnd()
+                
+                # Cleanup ANSI codes and mangled formatting
+                $cleanData = $script:ansiRegex.Replace($newData, "")
+                
+                $script:apiLogPos = $fs.Position
+                $reader.Close()
+                
+                if ($apiLogBox.TextLength -gt 50000) {
+                    $apiLogBox.Text = $apiLogBox.Text.Substring(10000)
+                }
+                $apiLogBox.AppendText($cleanData)
+                if ($apiLogBox.Visible) {
+                    $apiLogBox.SelectionStart = $apiLogBox.TextLength
+                    $apiLogBox.ScrollToCaret()
+                }
+            } else {
+                $fs.Close()
+            }
+        } catch {}
+    }
+    
+    # Process Frontend Log
+    if (Test-Path $script:frontendLogFile) {
+        try {
+            $fs = [System.IO.File]::Open($script:frontendLogFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+            if ($fs.Length -gt $script:frontendLogPos) {
+                $fs.Seek($script:frontendLogPos, [System.IO.SeekOrigin]::Begin) | Out-Null
+                $reader = New-Object System.IO.StreamReader($fs, [System.Text.Encoding]::UTF8)
+                $newData = $reader.ReadToEnd()
+                
+                # Cleanup ANSI codes and mangled formatting
+                $cleanData = $script:ansiRegex.Replace($newData, "")
+                
+                $script:frontendLogPos = $fs.Position
+                $reader.Close()
+                
+                if ($frontendLogBox.TextLength -gt 50000) {
+                    $frontendLogBox.Text = $frontendLogBox.Text.Substring(10000)
+                }
+                $frontendLogBox.AppendText($cleanData)
+                if ($frontendLogBox.Visible) {
+                    $frontendLogBox.SelectionStart = $frontendLogBox.TextLength
+                    $frontendLogBox.ScrollToCaret()
+                }
+            } else {
+                $fs.Close()
+            }
+        } catch {}
+    }
+})
 $timer.Start()
 
 # Initial status check

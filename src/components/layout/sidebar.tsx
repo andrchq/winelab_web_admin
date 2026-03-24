@@ -1,48 +1,67 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { Russo_One } from "next/font/google";
+import { useEffect, useState } from "react";
 import {
-    LayoutDashboard,
-    Package,
-    Boxes,
-    Warehouse,
-    ClipboardList,
-    Truck,
-    MapPin,
-    Store,
-    Users,
-    Settings,
-    BarChart3,
-    Bell,
-    ChevronLeft,
-    Menu,
-    LogOut,
+    type LucideIcon,
     ArrowDownToLine,
+    BarChart3,
+    Boxes,
     Building2,
+    ChevronLeft,
+    ClipboardList,
+    LayoutDashboard,
+    LogOut,
+    Menu,
+    Settings,
+    Store,
+    Truck,
+    Users,
+    Warehouse,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { useTSDMode } from "@/contexts/TSDModeContext";
-import { useDeliveries } from "@/lib/hooks";
+import { useRequests } from "@/lib/hooks";
+import { cn } from "@/lib/utils";
+
+interface SidebarNavItem {
+    name: string;
+    href: string;
+    icon: LucideIcon;
+    roles?: readonly string[];
+    badge?: number;
+}
+
+interface SidebarNavGroup {
+    title: string;
+    items: SidebarNavItem[];
+}
+
+const brandFont = Russo_One({
+    subsets: ["latin", "cyrillic"],
+    weight: "400",
+});
 
 export function Sidebar() {
     const pathname = usePathname();
     const { logout, hasRole } = useAuth();
-    const { data: deliveries } = useDeliveries();
+    const { isTSDMode, isExitingTSD } = useTSDMode();
+    const { data: requests } = useRequests();
 
-    // Calculate active/unprocessed deliveries count
-    // Assuming 'CREATED' is considered "open" or "new" tasks for logistics
-    // Adjust status filter as needed based on specific business logic for "unprocessed"
-    const activeDeliveriesCount = deliveries?.filter(d => ['CREATED'].includes(d.status)).length || 0;
-
-    // Initialize state from localStorage if available, otherwise default to false
+    const activeRequestsCount = requests?.filter((request) => request.status === "NEW").length || 0;
     const [collapsed, setCollapsed] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
+    const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+        "Склад": true,
+        "Логистика": true,
+        "Система": true,
+    });
 
     useEffect(() => {
-        // Use setTimeout to avoid synchronous setState inside effect in React 19
         const timer = setTimeout(() => {
             setIsMounted(true);
             const savedState = localStorage.getItem("sidebarCollapsed");
@@ -50,44 +69,73 @@ export function Sidebar() {
                 setCollapsed(savedState === "true");
             }
         }, 0);
+
         return () => clearTimeout(timer);
     }, []);
 
     const toggleCollapsed = () => {
-        const newState = !collapsed;
-        setCollapsed(newState);
-        localStorage.setItem("sidebarCollapsed", String(newState));
+        const nextState = !collapsed;
+        setCollapsed(nextState);
+        localStorage.setItem("sidebarCollapsed", String(nextState));
     };
-
-    // Default open states for groups
-    const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-        "Склад": true,
-        "Логистика": true,
-        "Система": true
-    });
 
     const toggleGroup = (groupName: string) => {
-        setOpenGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }));
+        setOpenGroups((prev) => ({ ...prev, [groupName]: !prev[groupName] }));
     };
 
-    const navGroups = [
+    const renderAnimatedText = (
+        text: string,
+        className?: string,
+        expandedWidthClassName = "max-w-[220px]",
+        stagger = 18,
+    ) => (
+        <span
+            aria-hidden={collapsed}
+            className={cn(
+                "overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-300 ease-out",
+                collapsed ? "max-w-0 opacity-0" : `${expandedWidthClassName} opacity-100`,
+                className,
+            )}
+        >
+            <span className="inline-flex whitespace-nowrap">
+                {text.split("").map((char, index) => {
+                    const reverseIndex = text.length - index - 1;
+                    return (
+                        <span
+                            key={`${text}-${index}`}
+                            className={cn(
+                                "inline-block transition-[transform,opacity] duration-300 ease-out",
+                                collapsed ? "translate-x-1 opacity-0" : "translate-x-0 opacity-100",
+                            )}
+                            style={{
+                                transitionDelay: `${(collapsed ? reverseIndex : index) * stagger}ms`,
+                            }}
+                        >
+                            {char === " " ? "\u00A0" : char}
+                        </span>
+                    );
+                })}
+            </span>
+        </span>
+    );
+
+    const navGroups: SidebarNavGroup[] = [
         {
-            title: "Основное", // Implicit group, no header needed if logical
+            title: "Основное",
             items: [
                 { name: "Главная", href: "/", icon: LayoutDashboard },
                 { name: "Магазины", href: "/stores", icon: Store },
-            ]
+            ],
         },
         {
             title: "Склад",
             items: [
-                { name: "Перемещения", href: "/receiving", icon: ArrowDownToLine, roles: ['ADMIN', 'MANAGER', 'WAREHOUSE'] as const },
+                { name: "Перемещения", href: "/receiving", icon: ArrowDownToLine, roles: ["ADMIN", "MANAGER", "WAREHOUSE"] as const },
                 { name: "Отгрузка", href: "/shipments", icon: Truck },
-                // Catalog integrated into Inventory (Serial Numbers)
                 { name: "Склады", href: "/warehouses", icon: Building2 },
-                { name: "Инвентаризация", href: "/assets", icon: Boxes }, // Was "Серийники"
-                { name: "Остатки", href: "/stock", icon: Warehouse },     // Was "Расходники"
-            ]
+                { name: "Инвентаризация", href: "/assets", icon: Boxes },
+                { name: "Остатки", href: "/stock", icon: Warehouse },
+            ],
         },
         {
             title: "Логистика",
@@ -96,11 +144,9 @@ export function Sidebar() {
                     name: "Заявки",
                     href: "/requests",
                     icon: ClipboardList,
-                    badge: activeDeliveriesCount > 0 ? activeDeliveriesCount : undefined
+                    badge: activeRequestsCount > 0 ? activeRequestsCount : undefined,
                 },
-                // Deliveries integrated into Requests
-
-            ]
+            ],
         },
         {
             title: "Система",
@@ -108,65 +154,71 @@ export function Sidebar() {
                 { name: "Аналитика", href: "/analytics", icon: BarChart3 },
                 { name: "Пользователи", href: "/users", icon: Users },
                 { name: "Настройки", href: "/settings", icon: Settings },
-            ]
-        }
+            ],
+        },
     ];
 
-    const { isTSDMode, isExitingTSD } = useTSDMode();
-
-    if (isTSDMode) return null;
+    if (isTSDMode) {
+        return null;
+    }
 
     return (
         <aside
             className={cn(
                 "flex h-screen flex-col bg-card border-r border-border/40 transition-all duration-300 ease-in-out",
                 collapsed ? "w-[72px]" : "w-64",
-                // Prevent transition on initial mount OR when exiting TSD mode to avoid animation
-                (!isMounted || isExitingTSD) && "transition-none"
+                (!isMounted || isExitingTSD) && "transition-none",
             )}
         >
-            {/* Logo Section */}
-            <div className={cn(
-                "flex h-24 items-center border-b border-border/40",
-                collapsed ? "justify-center px-2" : "justify-between px-4"
-            )}>
-                {!collapsed && (
-                    <Link href="/" className="flex items-center gap-3 group">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-purple-600 shadow-lg shadow-purple-500/25 transition-transform group-hover:scale-105">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="3"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="h-6 w-6 text-white"
-                            >
-                                <path d="M4 4l6 16 2.5-7 2.5 7 6-16" />
-                            </svg>
-                        </div>
-                        <span className="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-violet-600 to-purple-600">WineLab</span>
-                    </Link>
-                )}
+            <div className="border-b border-border/40 px-3 py-4">
+                <Link
+                    href="/"
+                    className={cn(
+                        "group flex items-center min-w-0 transition-all duration-300 ease-out",
+                        collapsed ? "justify-center w-full" : "gap-3 w-full",
+                    )}
+                >
+                    <Image
+                        src="/logo.png"
+                        alt="ВИНЛАБ"
+                        width={44}
+                        height={44}
+                        priority
+                        className={cn(
+                            "rounded-xl object-cover shadow-lg shadow-violet-500/20 transition-all duration-300 ease-out group-hover:scale-105",
+                            collapsed ? "h-10 w-10" : "h-11 w-11",
+                        )}
+                    />
+                    {!collapsed && (
+                        <span className={cn(brandFont.className, "text-[26px] uppercase tracking-[0.05em] text-violet-300")}>
+                            {renderAnimatedText("ВИНЛАБ", "align-middle", "max-w-[170px]", 20)}
+                        </span>
+                    )}
+                </Link>
+
                 <button
                     onClick={toggleCollapsed}
                     className={cn(
-                        "flex h-12 w-12 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 border border-border/50",
-                        collapsed && "mx-auto"
+                        "mt-3 flex items-center rounded-xl border border-border/50 text-muted-foreground transition-all duration-300 ease-out hover:bg-muted hover:text-foreground active:scale-[0.98]",
+                        collapsed ? "mx-auto h-10 w-10 justify-center" : "h-11 w-full justify-between px-4",
                     )}
+                    aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
                 >
                     {collapsed ? (
-                        <Menu className="h-6 w-6" />
+                        <Menu className="h-5 w-5 transition-transform duration-300 ease-out" />
                     ) : (
-                        <ChevronLeft className="h-6 w-6" />
+                        <>
+                            <span className="min-w-0 flex-1 text-left text-sm font-medium">
+                                {renderAnimatedText("Свернуть", undefined, "max-w-[120px]", 12)}
+                            </span>
+                            <ChevronLeft className="h-5 w-5 shrink-0 transition-transform duration-300 ease-out" />
+                        </>
                     )}
                 </button>
             </div>
 
-            {/* Navigation */}
             <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-4">
-                {navGroups.map((group, groupIndex) => (
+                {navGroups.map((group) => (
                     <div key={group.title}>
                         {!collapsed && group.title !== "Основное" && (
                             <div
@@ -174,20 +226,22 @@ export function Sidebar() {
                                 onClick={() => toggleGroup(group.title)}
                             >
                                 {group.title}
-                                <ChevronLeft className={cn(
-                                    "h-3 w-3 transition-transform duration-200",
-                                    openGroups[group.title] ? "-rotate-90" : "rotate-0"
-                                )} />
+                                <ChevronLeft
+                                    className={cn(
+                                        "h-3 w-3 transition-transform duration-200",
+                                        openGroups[group.title] ? "-rotate-90" : "rotate-0",
+                                    )}
+                                />
                             </div>
                         )}
 
-                        {/* Always show "Основное" items, or if group is open */}
                         {(group.title === "Основное" || openGroups[group.title] || collapsed) && (
                             <ul className="space-y-1">
                                 {group.items
-                                    .filter((item) => !item.roles || hasRole(item.roles as any))
+                                    .filter((item) => !item.roles || hasRole([...item.roles]))
                                     .map((item) => {
-                                        const isActive = pathname === item.href ||
+                                        const isActive =
+                                            pathname === item.href ||
                                             (item.href !== "/" && pathname.startsWith(item.href));
 
                                         return (
@@ -197,24 +251,27 @@ export function Sidebar() {
                                                     className={cn(
                                                         "sidebar-item relative border border-border/30 rounded-lg",
                                                         isActive && "sidebar-item-active",
-                                                        collapsed && "justify-center px-2"
+                                                        collapsed && "justify-center px-2",
                                                     )}
                                                     title={collapsed ? item.name : undefined}
                                                 >
                                                     <div className="flex items-center gap-3">
-                                                        <item.icon className={cn(
-                                                            "h-5 w-5 shrink-0 transition-colors",
-                                                            isActive ? "text-primary" : "text-muted-foreground"
-                                                        )} />
+                                                        <item.icon
+                                                            className={cn(
+                                                                "h-5 w-5 shrink-0 transition-colors",
+                                                                isActive ? "text-primary" : "text-muted-foreground",
+                                                            )}
+                                                        />
                                                         {!collapsed && <span>{item.name}</span>}
                                                     </div>
 
-                                                    {/* Badge Counter */}
                                                     {item.badge !== undefined && item.badge > 0 && (
-                                                        <div className={cn(
-                                                            "flex items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-sm ring-1 ring-background",
-                                                            collapsed ? "absolute -top-1 -right-1 h-5 w-5" : "ml-auto h-5 px-1.5 min-w-[20px]"
-                                                        )}>
+                                                        <div
+                                                            className={cn(
+                                                                "flex items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-sm ring-1 ring-background",
+                                                                collapsed ? "absolute -top-1 -right-1 h-5 w-5" : "ml-auto h-5 px-1.5 min-w-[20px]",
+                                                            )}
+                                                        >
                                                             {item.badge}
                                                         </div>
                                                     )}
@@ -228,13 +285,12 @@ export function Sidebar() {
                 ))}
             </nav>
 
-            {/* Bottom Actions */}
             <div className="border-t border-border/40 py-4 px-3">
                 <button
                     onClick={() => logout()}
                     className={cn(
                         "sidebar-item w-full text-destructive hover:bg-destructive/10 hover:text-destructive",
-                        collapsed && "justify-center px-2"
+                        collapsed && "justify-center px-2",
                     )}
                     title={collapsed ? "Выйти" : undefined}
                 >

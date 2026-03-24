@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Query, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { StoresService } from './stores.service';
 import { CreateStoreDto } from './dto/create-store.dto';
@@ -77,5 +78,13 @@ export class StoresController {
         }
     ) {
         return this.storesService.addEquipment(id, data);
+    }
+
+    @Post('import')
+    @UseInterceptors(FileInterceptor('file'))
+    @RequirePermissions(SystemPermission.STORE_UPDATE)
+    @ApiOperation({ summary: 'Импорт магазинов из XLSX' })
+    async import(@UploadedFile() file: any) {
+        return this.storesService.importStores(file);
     }
 }

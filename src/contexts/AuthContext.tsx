@@ -13,6 +13,7 @@ interface AuthContextType {
     login: (credentials: LoginCredentials) => Promise<void>;
     logout: () => Promise<void>;
     hasRole: (roles: string[]) => boolean;
+    hasPermission: (permissions: string[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -79,6 +80,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return roles.includes(userRoleName);
     };
 
+    const hasPermission = (permissions: string[]): boolean => {
+        if (!user?.permissions?.length) return false;
+        return permissions.every((permission) => user.permissions.includes(permission));
+    };
+
     return (
         <AuthContext.Provider
             value={{
@@ -88,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 login,
                 logout,
                 hasRole,
+                hasPermission,
             }}
         >
             {children}

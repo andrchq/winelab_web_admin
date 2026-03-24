@@ -10,12 +10,16 @@ import { Check, AlertTriangle, ArrowLeft, ArrowRight, PackageCheck, Trash2 } fro
 import { toast } from "sonner";
 import { useScanDetection } from "@/lib/use-scan-detection";
 import { useTSDMode } from "@/contexts/TSDModeContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { sounds } from "@/lib/sounds";
 
 export default function ReceivingDashboard() {
     const params = useParams();
     const router = useRouter();
     const id = params?.id as string;
     const { isTSDMode } = useTSDMode();
+    const { hasRole } = useAuth();
+    const isPrivileged = hasRole(['ADMIN', 'MANAGER']);
 
     const [session, setSession] = useState<ReceivingSession | null>(null);
     const [loading, setLoading] = useState(true);
@@ -105,6 +109,8 @@ export default function ReceivingDashboard() {
     const totalScanned = session.items.reduce((acc, i) => acc + (i.scannedQuantity || 0), 0);
     const totalExpected = session.items.reduce((acc, i) => acc + i.expectedQuantity, 0);
     const progressPercent = Math.min(100, Math.round((totalScanned / totalExpected) * 100));
+    const unmappedScannedItems = session.items.filter((item) => !item.productId && item.scannedQuantity > 0);
+    const hasBlockingIssues = unmappedScannedItems.length > 0;
 
     return (
         <div className="flex flex-col h-full">
@@ -165,6 +171,14 @@ export default function ReceivingDashboard() {
                                 </div>
                             </CardContent>
                         </Card>
+
+                        {hasBlockingIssues && (
+                            <Card className="border-orange-300 bg-orange-50">
+                                <CardContent className="p-4 text-sm text-orange-900">
+                                    В этой приемке есть принятые позиции без привязки к товару. Завершение будет доступно только после исправления таких позиций.
+                                </CardContent>
+                            </Card>
+                        )}
                     </div>
 
                     {/* Grid */}
@@ -224,13 +238,13 @@ export default function ReceivingDashboard() {
 
             {/* Fixed Footer Action */}
             <div className="border-t bg-background p-4 flex justify-between items-center gap-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleDeleteSession} title="Удалить приемку">
+                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleDeleteSession} title="Удалить приемку" style={{ visibility: isPrivileged ? 'visible' : 'hidden' }}>
                     <Trash2 className="h-5 w-5" />
                 </Button>
                 <div className="text-sm text-muted-foreground hidden sm:block flex-1">
                     Нажмите на карточку для сканирования
                 </div>
-                <Button size="lg" className="w-full sm:w-auto" disabled={totalScanned === 0} onClick={handleCompleteSession}>
+                <Button size="lg" className="w-full sm:w-auto" disabled={totalScanned === 0 || hasBlockingIssues} onClick={handleCompleteSession}>
                     <PackageCheck className="mr-2 h-5 w-5" />
                     Завершить приемку
                 </Button>

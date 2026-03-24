@@ -20,29 +20,17 @@ interface ManualInvoiceDialogProps {
 
 interface RowItem {
     tempId: string;
-    productId: string | "new";
+    productId: string;
     quantity: number;
-    // New product fields
-    newName: string;
-    newSku: string;
-    newCategory: string;
 }
 
-const CATEGORIES = [
-    "POS-терминалы",
-    "Сканеры",
-    "Принтеры",
-    "Мониторы",
-    "ПК и Ноутбуки",
-    "Сетевое оборудование",
-    "Прочее"
-];
+
 
 export function ManualInvoiceDialog({ open, onOpenChange, onSubmit }: ManualInvoiceDialogProps) {
     const { data: products, refetch: refetchProducts } = useProducts();
     const [source, setSource] = useState("");
     const [rows, setRows] = useState<RowItem[]>([
-        { tempId: "1", productId: "", quantity: 1, newName: "", newSku: "", newCategory: "" }
+        { tempId: "1", productId: "", quantity: 1 }
     ]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -52,10 +40,7 @@ export function ManualInvoiceDialog({ open, onOpenChange, onSubmit }: ManualInvo
             {
                 tempId: Math.random().toString(36).substr(2, 9),
                 productId: "",
-                quantity: 1,
-                newName: "",
-                newSku: "",
-                newCategory: ""
+                quantity: 1
             }
         ]);
     };
@@ -82,14 +67,8 @@ export function ManualInvoiceDialog({ open, onOpenChange, onSubmit }: ManualInvo
         // Validate rows
         for (const row of rows) {
             if (!row.productId) {
-                toast.error("Выберите оборудование или создайте новое для всех позиций");
+                toast.error("Выберите оборудование для всех позиций");
                 return;
-            }
-            if (row.productId === "new") {
-                if (!row.newName || !row.newSku || !row.newCategory) {
-                    toast.error("Заполните обязательные поля для нового оборудования (Название, Артикул, Категория)");
-                    return;
-                }
             }
             if (row.quantity <= 0) {
                 toast.error("Количество должно быть больше 0");
@@ -106,51 +85,27 @@ export function ManualInvoiceDialog({ open, onOpenChange, onSubmit }: ManualInvo
             for (const row of rows) {
                 // Generate item ID for the invoice
                 const itemInvoiceId = Math.random().toString(36).substr(2, 9);
-                let targetProductId = row.productId;
+                const targetProductId = row.productId;
 
-                // Create new product if needed
-                if (row.productId === "new") {
-                    try {
-                        const newProduct: any = await api.post("/products", {
-                            name: row.newName,
-                            sku: row.newSku,
-                            category: row.newCategory,
-                            isActive: true
-                        });
-                        targetProductId = newProduct.id;
-                    } catch (e) {
-                        console.error("Error creating product", e);
-                        toast.error(`Ошибка при создании товара: ${row.newName}`);
-                        setIsSubmitting(false);
-                        return;
-                    }
-                }
-
-                // Add to invoice items list
-                // We use the product name as originalName for new items, or find existing name
-                const productName = targetProductId === row.productId // if it was existing
-                    ? products?.find(p => p.id === targetProductId)?.name || "Unknown"
-                    : row.newName;
+                const product = products?.find(p => p.id === targetProductId);
+                const productName = product?.name || "Unknown";
 
                 finalItems.push({
                     id: itemInvoiceId,
                     originalName: productName,
                     quantity: Number(row.quantity),
-                    sku: row.newSku || products?.find(p => p.id === targetProductId)?.sku
+                    sku: product?.sku
                 });
 
                 // Add to mapping
                 finalMapping[itemInvoiceId] = targetProductId;
             }
 
-            // Refresh products list in background to ensure new items appear in future
-            refetchProducts();
-
             onSubmit(finalItems, finalMapping, source);
             onOpenChange(false);
 
             // Reset form
-            setRows([{ tempId: Math.random().toString(36), productId: "", quantity: 1, newName: "", newSku: "", newCategory: "" }]);
+            setRows([{ tempId: Math.random().toString(36), productId: "", quantity: 1 }]);
             setSource("");
 
         } catch (error) {
@@ -167,7 +122,7 @@ export function ManualInvoiceDialog({ open, onOpenChange, onSubmit }: ManualInvo
                 <DialogHeader className="p-4 md:p-6 pb-2 border-b shrink-0 bg-background z-10">
                     <DialogTitle>Ручное создание накладной</DialogTitle>
                     <DialogDescription>
-                        Заполните список оборудования. Новые позиции будут добавлены в каталог автоматически.
+                        Заполните список оборудования из каталога.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -212,7 +167,6 @@ export function ManualInvoiceDialog({ open, onOpenChange, onSubmit }: ManualInvo
                                                 <SelectValue placeholder="Выберите из каталога..." />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="new" className="font-bold text-primary">+ Создать новое оборудование</SelectItem>
                                                 {products?.map(p => (
                                                     <SelectItem key={p.id} value={p.id}>{p.name} ({p.sku})</SelectItem>
                                                 ))}
@@ -230,42 +184,7 @@ export function ManualInvoiceDialog({ open, onOpenChange, onSubmit }: ManualInvo
                                     </div>
                                 </div>
 
-                                {row.productId === "new" && (
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 bg-background border rounded-md animate-in fade-in slide-in-from-top-2">
-                                        <div className="space-y-2">
-                                            <Label className="text-xs">Название <span className="text-destructive">*</span></Label>
-                                            <Input
-                                                value={row.newName}
-                                                onChange={(e) => updateRow(row.tempId, "newName", e.target.value)}
-                                                placeholder="Название товара"
-                                                className="h-8"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-xs">Артикул / SKU <span className="text-destructive">*</span></Label>
-                                            <Input
-                                                value={row.newSku}
-                                                onChange={(e) => updateRow(row.tempId, "newSku", e.target.value)}
-                                                placeholder="REF-12345"
-                                                className="h-8"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-xs">Категория <span className="text-destructive">*</span></Label>
-                                            <Select
-                                                value={row.newCategory}
-                                                onValueChange={(val) => updateRow(row.tempId, "newCategory", val)}
-                                            >
-                                                <SelectTrigger className="h-8">
-                                                    <SelectValue placeholder="Категория" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-                                )}
+
                             </div>
                         ))}
 

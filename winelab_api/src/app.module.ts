@@ -16,6 +16,7 @@ import { EventsModule } from './events/events.module';
 import { ReceivingModule } from './receiving/receiving.module';
 import { CategoriesModule } from './categories/categories.module';
 import { RolesModule } from './roles/roles.module';
+import { InventoryModule } from './inventory/inventory.module';
 
 @Module({
     imports: [
@@ -37,7 +38,9 @@ import { RolesModule } from './roles/roles.module';
         DashboardModule,
         EventsModule,
         ReceivingModule,
+        ReceivingModule,
         CategoriesModule,
+        InventoryModule,
     ],
 })
 export class AppModule { }

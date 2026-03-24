@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { Product, StockItem, Warehouse } from "@/types/api";
 import { useWarehouses } from "@/lib/hooks";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface StockManagerDialogProps {
     open: boolean;
@@ -20,7 +21,13 @@ interface StockManagerDialogProps {
 
 export function StockManagerDialog({ open, onOpenChange, product, stockItems, onSuccess }: StockManagerDialogProps) {
     const { data: warehouses } = useWarehouses();
+    const { hasRole } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
+
+    // Permission check
+    const canEditDelta = hasRole(['ADMIN', 'MANAGER']);
+    const canEditSettings = hasRole(['ADMIN', 'MANAGER', 'WAREHOUSE']);
+
 
     // Form State
     const [sku, setSku] = useState("");
@@ -118,17 +125,9 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                             productId: product.id,
                             warehouseId: state.id,
                             quantity: state.delta, // Correct initial quantity
+                            reserved: state.reserved,
                             minQuantity: state.minQuantity
                         });
-                        // Separate call for reserved if create doesn't support it?
-                        // Create DTO in service: { productId, warehouseId, quantity, minQuantity }.
-                        // It doesn't take reserved. So we might need to patch it after creation if reserved > 0.
-                        // But for now, let's assume we can only create with Qty/Min.
-                        // If reserved is needed, we'd need to fetch the ID of created item and patch.
-                        // This is getting complex.
-
-                        // Hack: Create then immediately patch if reserved > 0?
-                        // Actually, usually you don't reserve on creation of empty stock.
                     }
                 }
             }));
@@ -214,6 +213,7 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                                                 <Input
                                                     type="number"
                                                     value={state.delta || ""}
+                                                    disabled={!canEditDelta}
                                                     onChange={(e) => {
                                                         const val = parseInt(e.target.value) || 0;
                                                         const newStates = [...warehouseStates];
@@ -221,7 +221,7 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                                                         setWarehouseStates(newStates);
                                                     }}
                                                     placeholder="0"
-                                                    className={state.delta !== 0 ? (state.delta > 0 ? "border-green-500 bg-green-50" : "border-red-500 bg-red-50") : ""}
+                                                    className={state.delta !== 0 ? (state.delta > 0 ? "border-green-500 bg-success/10" : "border-red-500 bg-destructive/10") : ""}
                                                 />
                                             </td>
                                             <td className="p-3">
@@ -229,6 +229,7 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                                                     type="number"
                                                     min="0"
                                                     value={state.reserved}
+                                                    disabled={!canEditSettings}
                                                     onChange={(e) => {
                                                         const val = Math.max(0, parseInt(e.target.value) || 0);
                                                         const newStates = [...warehouseStates];
@@ -242,6 +243,7 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                                                     type="number"
                                                     min="0"
                                                     value={state.minQuantity}
+                                                    disabled={!canEditSettings}
                                                     onChange={(e) => {
                                                         const val = Math.max(0, parseInt(e.target.value) || 0);
                                                         const newStates = [...warehouseStates];

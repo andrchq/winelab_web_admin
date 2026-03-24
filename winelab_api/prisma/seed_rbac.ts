@@ -50,7 +50,14 @@ async function main() {
 
     const roleConfigs = [
         { name: 'ADMIN', description: 'Administrator', permissions: permissions, isSystem: true },
-        { name: 'MANAGER', description: 'Manager', permissions: permissions.filter(p => p !== SystemPermission.USER_DELETE && p !== SystemPermission.ROLE_DELETE), isSystem: true },
+        {
+            name: 'MANAGER', description: 'Manager', permissions: permissions.filter(p =>
+                p !== SystemPermission.USER_DELETE &&
+                p !== SystemPermission.ROLE_DELETE &&
+                p !== SystemPermission.SHIPMENT_DELETE &&
+                p !== SystemPermission.CATEGORY_MANAGE
+            ), isSystem: true
+        },
         { name: 'WAREHOUSE', description: 'Warehouse Worker', permissions: warehousePermissions, isSystem: true },
         { name: 'USER', description: 'Regular User', permissions: [SystemPermission.STORE_READ, SystemPermission.PRODUCT_READ, SystemPermission.REQUEST_READ, SystemPermission.REQUEST_CREATE], isSystem: true },
     ];

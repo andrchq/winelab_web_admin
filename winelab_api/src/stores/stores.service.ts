@@ -68,7 +68,16 @@ export class StoresService {
             where: { id },
             include: {
                 assets: {
-                    include: { product: { select: { name: true, category: true, sku: true } } },
+                    include: {
+                        product: { select: { name: true, category: true, sku: true } },
+                        _count: {
+                            select: {
+                                assetHistory: {
+                                    where: { action: 'COMMENT' }
+                                }
+                            }
+                        }
+                    },
                     orderBy: { createdAt: 'desc' },
                 },
                 requests: {
