@@ -322,6 +322,7 @@ export class AssetsService {
       await tx.receivingItem.createMany({
         data: assets.map((asset) => ({
           sessionId: receivingSession.id,
+          linkedAssetId: asset.id,
           productId: asset.productId,
           name: asset.product?.name || 'Оборудование',
           sku: asset.product?.sku || null,

@@ -2,18 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Box, Minus, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Box, Minus, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { receivingService, ReceivingItem, ReceivingSession } from "@/lib/receiving-service";
+
 import { useScanDetection } from "@/lib/use-scan-detection";
 import { useTSDMode } from "@/contexts/TSDModeContext";
+import { receivingService, ReceivingSession } from "@/lib/receiving-service";
 import { sounds } from "@/lib/sounds";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 
 export default function ScanningPage() {
     const params = useParams();
@@ -23,11 +24,13 @@ export default function ScanningPage() {
     const { isTSDMode } = useTSDMode();
 
     const [session, setSession] = useState<ReceivingSession | null>(null);
-    const [item, setItem] = useState<ReceivingItem | null>(null);
     const [isBoxMode, setIsBoxMode] = useState(false);
     const [boxMultiplier, setBoxMultiplier] = useState(10);
     const [showBoxConfig, setShowBoxConfig] = useState(false);
     const [tempBoxQty, setTempBoxQty] = useState("10");
+
+    const item = session?.items.find((entry) => entry.id === itemId) || null;
+    const needsBinding = Boolean(item?.linkedAsset?.isUnidentified);
 
     const loadData = async () => {
         try {
@@ -37,7 +40,6 @@ export default function ScanningPage() {
                 return;
             }
 
-            setSession(data);
             const currentItem = data.items.find((entry) => entry.id === itemId);
             if (!currentItem) {
                 sounds.error();
@@ -46,7 +48,7 @@ export default function ScanningPage() {
                 return;
             }
 
-            setItem(currentItem);
+            setSession(data);
         } catch (error: any) {
             sounds.error();
             console.error(error);
@@ -64,11 +66,17 @@ export default function ScanningPage() {
         try {
             await receivingService.updateItem(sessionId, itemId, qty, isManual, code);
             await loadData();
-            const message = isManual ? `Ручной ввод: ${qty}` : `Скан: +${qty}`;
             sounds.success();
-            toast.success(message);
+            toast.success(
+                isManual
+                    ? `Ручной ввод: ${qty}`
+                    : needsBinding
+                        ? "ШК считан. Он будет привязан к equipment после завершения приемки"
+                        : `Скан: +${qty}`,
+            );
         } catch (error: any) {
             const message = error?.message || "";
+
             if (message.toLowerCase().includes("уже был отсканирован")) {
                 sounds.warning();
                 toast.warning("Этот штрихкод уже был отсканирован в этой приемке");
@@ -81,7 +89,8 @@ export default function ScanningPage() {
                 message.toLowerCase().includes("не найден в системе") ||
                 message.toLowerCase().includes("статусе перемещения") ||
                 message.toLowerCase().includes("только по одной единице") ||
-                message.toLowerCase().includes("ручной ввод недоступен")
+                message.toLowerCase().includes("ручной ввод недоступен") ||
+                message.toLowerCase().includes("принадлежит другому оборудованию")
             ) {
                 sounds.warning();
                 toast.warning(message);
@@ -145,20 +154,20 @@ export default function ScanningPage() {
 
     if (!session || !item) return <div className="p-8">Загрузка...</div>;
 
-    const progress = Math.min(100, Math.round(((item.scannedQuantity || 0) / item.expectedQuantity) * 100));
+    const progress = Math.min(100, Math.round(((item.scannedQuantity || 0) / Math.max(item.expectedQuantity, 1)) * 100));
     const isOver = (item.scannedQuantity || 0) > item.expectedQuantity;
 
     return (
-        <div className="flex flex-col h-full bg-background">
-            <main className={`flex-1 overflow-y-auto ${isTSDMode ? "p-2" : "p-4"} bg-muted/10 relative`}>
-                <div className="max-w-2xl mx-auto space-y-6 pb-20">
+        <div className="flex h-full flex-col bg-background">
+            <main className={`relative flex-1 overflow-y-auto bg-muted/10 ${isTSDMode ? "p-2" : "p-4"}`}>
+                <div className="mx-auto max-w-2xl space-y-6 pb-20">
                     <div className="flex items-center gap-3">
                         <Button variant="ghost" size="icon" onClick={() => router.push(`/receiving/${sessionId}`)} className="h-10 w-10 shrink-0">
                             <ArrowLeft className="h-6 w-6" />
                         </Button>
                         <div className="min-w-0 flex-1">
-                            <h2 className="text-lg md:text-xl font-bold leading-tight truncate px-1">{item.name}</h2>
-                            <p className="text-xs md:text-sm text-muted-foreground px-1 truncate">{item.sku || "Без артикула"}</p>
+                            <h2 className="truncate px-1 text-lg font-bold leading-tight md:text-xl">{item.name}</h2>
+                            <p className="truncate px-1 text-xs text-muted-foreground md:text-sm">{item.sku || "Без артикула"}</p>
                         </div>
                     </div>
 
@@ -170,122 +179,132 @@ export default function ScanningPage() {
                                 : "border-primary/50 bg-primary/5"
                             }`}
                     >
-                        <CardContent className="p-4 md:p-6 text-center">
-                            <div className="text-[10px] md:text-sm uppercase tracking-wider text-muted-foreground mb-1 md:mb-2 font-bold opacity-80">
+                        <CardContent className="p-4 text-center md:p-6">
+                            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground opacity-80 md:mb-2 md:text-sm">
                                 Принято / Ожидается
                             </div>
                             <div className="flex justify-center items-baseline gap-2">
-                                <span className={`text-6xl md:text-7xl font-black font-mono tracking-tighter drop-shadow-sm ${isOver ? "text-red-500" : "text-primary"}`}>
+                                <span className={`font-mono text-6xl font-black tracking-tighter drop-shadow-sm md:text-7xl ${isOver ? "text-red-500" : "text-primary"}`}>
                                     {item.scannedQuantity || 0}
                                 </span>
-                                <span className="text-2xl md:text-3xl text-muted-foreground/60 font-medium font-mono">
+                                <span className="font-mono text-2xl font-medium text-muted-foreground/60 md:text-3xl">
                                     / {item.expectedQuantity}
                                 </span>
                             </div>
-                            <div className="mt-4 h-3 md:h-4 bg-muted/30 rounded-full overflow-hidden p-0.5 border border-muted/20">
+                            <div className="mt-4 h-3 overflow-hidden rounded-full border border-muted/20 bg-muted/30 p-0.5 md:h-4">
                                 <div
-                                    className={`h-full rounded-full transition-all duration-500 shadow-sm ${isOver ? "bg-red-500" : "bg-green-500"}`}
+                                    className={`h-full rounded-full shadow-sm transition-all duration-500 ${isOver ? "bg-red-500" : "bg-green-500"}`}
                                     style={{ width: `${progress}%` }}
                                 />
                             </div>
                         </CardContent>
                     </Card>
 
-                    <div className="w-full">
-                        {isConsumable() && (
-                            <Card
-                                className={`group relative overflow-hidden transition-all duration-500 border-2 w-full cursor-pointer shadow-sm ${isBoxMode
-                                    ? "border-primary/50 bg-primary/[0.03] ring-1 ring-primary/20 shadow-[0_0_20px_rgba(59,130,246,0.1)]"
-                                    : "border-border hover:border-primary/30 hover:bg-muted/30"
-                                    }`}
-                                onClick={() => {
-                                    if (!isBoxMode) toggleBoxMode(true);
-                                    else toggleBoxMode(false);
-                                }}
-                            >
-                                <CardContent className="p-5 flex flex-col gap-5 pointer-events-none relative z-10">
-                                    <div className="flex items-center justify-between gap-4">
-                                        <div className="flex items-center gap-4 min-w-0 flex-1">
-                                            <div className={`p-3.5 rounded-2xl shrink-0 transition-all duration-500 ${isBoxMode
-                                                ? "bg-primary text-primary-foreground shadow-[0_5px_15px_rgba(59,130,246,0.4)] scale-110 rotate-3"
-                                                : "bg-muted text-muted-foreground"
-                                                }`}>
-                                                <Box className="h-6 w-6" />
+                    {needsBinding && (
+                        <Card className="border-amber-300 bg-amber-50">
+                            <CardContent className="p-4 text-sm text-amber-900">
+                                Это legacy-оборудование без реального ШК в системе. Отсканируй фактический штрихкод устройства.
+                                После завершения приемки он будет привязан к текущему asset, и позиция станет обычной.
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {isConsumable() && (
+                        <Card
+                            className={`group relative w-full cursor-pointer overflow-hidden border-2 shadow-sm transition-all duration-500 ${isBoxMode
+                                ? "border-primary/50 bg-primary/[0.03] ring-1 ring-primary/20 shadow-[0_0_20px_rgba(59,130,246,0.1)]"
+                                : "border-border hover:border-primary/30 hover:bg-muted/30"
+                                }`}
+                            onClick={() => {
+                                if (!isBoxMode) {
+                                    toggleBoxMode(true);
+                                } else {
+                                    toggleBoxMode(false);
+                                }
+                            }}
+                        >
+                            <CardContent className="pointer-events-none relative z-10 flex flex-col gap-5 p-5">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="flex min-w-0 flex-1 items-center gap-4">
+                                        <div className={`shrink-0 rounded-2xl p-3.5 transition-all duration-500 ${isBoxMode
+                                            ? "scale-110 rotate-3 bg-primary text-primary-foreground shadow-[0_5px_15px_rgba(59,130,246,0.4)]"
+                                            : "bg-muted text-muted-foreground"
+                                            }`}>
+                                            <Box className="h-6 w-6" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-3 text-2xl font-black tracking-tight">
+                                                <span className={isBoxMode ? "text-primary" : ""}>Коробки</span>
+                                                {isBoxMode && (
+                                                    <Badge className="h-fit border-none bg-primary px-2.5 py-1 text-xs font-black text-primary-foreground shadow-sm">
+                                                        x{boxMultiplier}
+                                                    </Badge>
+                                                )}
                                             </div>
-                                            <div className="min-w-0">
-                                                <div className="font-black text-2xl flex items-center gap-3 tracking-tight">
-                                                    <span className={isBoxMode ? "text-primary" : ""}>Коробки</span>
-                                                    {isBoxMode && (
-                                                        <Badge className="px-2.5 py-1 text-xs font-black bg-primary text-primary-foreground border-none shadow-sm h-fit">
-                                                            x{boxMultiplier}
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                                <div className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em] mt-1 italic">
-                                                    Множитель при скане
-                                                </div>
+                                            <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60 italic">
+                                                Множитель при скане
                                             </div>
                                         </div>
-                                        <div className="pointer-events-auto">
-                                            <Switch
-                                                checked={isBoxMode}
-                                                onCheckedChange={toggleBoxMode}
-                                                className="scale-125 transition-all duration-300 data-[state=checked]:bg-primary"
-                                            />
-                                        </div>
                                     </div>
-
-                                    <div className={`flex gap-4 items-center p-4 rounded-2xl border transition-all duration-700 ${isBoxMode
-                                        ? "bg-amber-500/[0.08] border-amber-500/20 text-amber-900 dark:text-amber-200 shadow-inner"
-                                        : "bg-muted/40 border-border/40 text-muted-foreground/50 opacity-50"
-                                        }`}>
-                                        <div className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-xl transition-colors duration-500 ${isBoxMode ? "bg-amber-500/20 text-amber-600" : "bg-muted"}`}>
-                                            <span className="text-sm">!</span>
-                                        </div>
-                                        <div className="flex-1 text-[13px] leading-snug">
-                                            <span className="font-black block uppercase tracking-wider text-[11px] mb-1">Важно</span>
-                                            <span className="font-medium opacity-90">Этот режим доступен только для расходников.</span>
-                                        </div>
+                                    <div className="pointer-events-auto">
+                                        <Switch
+                                            checked={isBoxMode}
+                                            onCheckedChange={toggleBoxMode}
+                                            className="scale-125 transition-all duration-300 data-[state=checked]:bg-primary"
+                                        />
                                     </div>
-                                </CardContent>
+                                </div>
 
-                                {isBoxMode && (
-                                    <div className="absolute -right-8 -bottom-8 opacity-[0.05] pointer-events-none transition-all duration-1000 animate-pulse">
-                                        <Box className="h-32 w-32 rotate-12" />
+                                <div className={`flex items-center gap-4 rounded-2xl border p-4 transition-all duration-700 ${isBoxMode
+                                    ? "border-amber-500/20 bg-amber-500/[0.08] text-amber-900 shadow-inner dark:text-amber-200"
+                                    : "border-border/40 bg-muted/40 text-muted-foreground/50 opacity-50"
+                                    }`}>
+                                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors duration-500 ${isBoxMode ? "bg-amber-500/20 text-amber-600" : "bg-muted"}`}>
+                                        <span className="text-sm">!</span>
                                     </div>
-                                )}
-                            </Card>
-                        )}
-                    </div>
+                                    <div className="flex-1 text-[13px] leading-snug">
+                                        <span className="mb-1 block text-[11px] font-black uppercase tracking-wider">Важно</span>
+                                        <span className="font-medium opacity-90">Этот режим доступен только для расходников.</span>
+                                    </div>
+                                </div>
+                            </CardContent>
 
-                    <div className="pt-4 px-1">
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 px-1">История сканирований</h3>
+                            {isBoxMode && (
+                                <div className="pointer-events-none absolute -bottom-8 -right-8 opacity-[0.05] transition-all duration-1000 animate-pulse">
+                                    <Box className="h-32 w-32 rotate-12" />
+                                </div>
+                            )}
+                        </Card>
+                    )}
+
+                    <div className="px-1 pt-4">
+                        <h3 className="mb-3 px-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">История сканирований</h3>
                         <div className="space-y-2">
                             {item.scans && item.scans.length > 0 ? (
                                 item.scans.map((scan) => (
-                                    <div key={scan.id} className="flex items-center justify-between p-3 rounded-xl bg-card/50 border border-border/50 shadow-sm animate-in slide-in-from-top-2 duration-300">
+                                    <div key={scan.id} className="animate-in slide-in-from-top-2 flex items-center justify-between rounded-xl border border-border/50 bg-card/50 p-3 shadow-sm duration-300">
                                         <div className="flex flex-col gap-0.5">
-                                            <div className="font-mono text-[10px] text-muted-foreground/70 font-medium">
+                                            <div className="font-mono text-[10px] font-medium text-muted-foreground/70">
                                                 {new Date(scan.timestamp).toLocaleTimeString()}
                                             </div>
-                                            <div className="font-bold text-sm tracking-tight text-foreground">
+                                            <div className="text-sm font-bold tracking-tight text-foreground">
                                                 {scan.isManual ? (
-                                                    <span className="text-orange-500/90 italic">Ручной ввод</span>
+                                                    <span className="italic text-orange-500/90">Ручной ввод</span>
                                                 ) : (
-                                                    <span className="font-mono text-primary-foreground bg-primary/20 px-1.5 py-0.5 rounded text-xs select-all">
+                                                    <span className="rounded bg-primary/20 px-1.5 py-0.5 font-mono text-xs text-primary-foreground select-all">
                                                         {scan.code || "Скан"}
                                                     </span>
                                                 )}
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3">
-                                            <div className={`font-black text-lg ${scan.quantity > 0 ? "text-green-500" : "text-red-500"}`}>
+                                            <div className={`text-lg font-black ${scan.quantity > 0 ? "text-green-500" : "text-red-500"}`}>
                                                 {scan.quantity > 0 ? `+${scan.quantity}` : scan.quantity}
                                             </div>
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-9 w-9 text-destructive/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                                className="h-9 w-9 text-destructive/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
                                                 onClick={() => handleDelete(scan.id)}
                                             >
                                                 <Trash2 className="h-4 w-4" />
@@ -294,7 +313,7 @@ export default function ScanningPage() {
                                     </div>
                                 ))
                             ) : (
-                                <div className="text-center py-10 text-muted-foreground text-sm border-2 border-dashed rounded-xl border-border/30 bg-muted/5">
+                                <div className="rounded-xl border-2 border-dashed border-border/30 bg-muted/5 py-10 text-center text-sm text-muted-foreground">
                                     История пуста
                                 </div>
                             )}
@@ -316,7 +335,7 @@ export default function ScanningPage() {
                     <DialogHeader>
                         <DialogTitle>Настройка режима коробок</DialogTitle>
                         <DialogDescription>
-                            Укажите количество единиц в одной коробке. Это число будет добавляться при каждом сканировании.
+                            Укажи количество единиц в одной коробке. Это число будет добавляться при каждом сканировании.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="py-4">
@@ -325,7 +344,7 @@ export default function ScanningPage() {
                                 <Minus className="h-4 w-4" />
                             </Button>
                             <Input
-                                className="text-center text-2xl font-bold h-14"
+                                className="h-14 text-center text-2xl font-bold"
                                 value={tempBoxQty}
                                 onChange={(event) => setTempBoxQty(event.target.value)}
                                 type="number"
@@ -334,7 +353,7 @@ export default function ScanningPage() {
                                 <Plus className="h-4 w-4" />
                             </Button>
                         </div>
-                        <div className="flex justify-center gap-2 mt-4">
+                        <div className="mt-4 flex justify-center gap-2">
                             <Button variant="secondary" size="sm" onClick={() => setTempBoxQty("6")}>6</Button>
                             <Button variant="secondary" size="sm" onClick={() => setTempBoxQty("10")}>10</Button>
                             <Button variant="secondary" size="sm" onClick={() => setTempBoxQty("12")}>12</Button>

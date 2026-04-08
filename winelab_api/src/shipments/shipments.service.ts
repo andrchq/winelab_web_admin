@@ -785,6 +785,10 @@ export class ShipmentsService {
   async addConsumables(shipmentId: string, productId: string, quantity: number, warehouseId: string) {
     const shipment = await this.ensureShipmentExists(shipmentId);
 
+    if (shipment.status === ShipmentStatus.SHIPPED || shipment.status === ShipmentStatus.DELIVERED) {
+      throw new BadRequestException('РќРµР»СЊР·СЏ РґРѕР±Р°РІР»СЏС‚СЊ СЂР°СЃС…РѕРґРЅРёРєРё РІ СѓР¶Рµ Р·Р°РІРµСЂС€РµРЅРЅСѓСЋ РѕС‚РіСЂСѓР·РєСѓ');
+    }
+
     if (shipment.warehouseId !== warehouseId) {
       throw new BadRequestException('Склад расходников должен совпадать со складом отгрузки');
     }
@@ -798,41 +802,53 @@ export class ShipmentsService {
       throw new BadRequestException('Недостаточно остатка на складе');
     }
 
-    await this.prisma.stockItem.update({
-      where: { id: stockItem.id },
-      data: {
-        quantity: { decrement: quantity },
-      },
-    });
-
-    const existingLine = await this.prisma.shipmentLine.findFirst({
-      where: {
-        shipmentId,
-        productId,
-      },
-    });
-
-    if (existingLine) {
-      await this.prisma.shipmentLine.update({
-        where: { id: existingLine.id },
-        data: {
-          quantity: { increment: quantity },
-          expectedQuantity: { increment: quantity },
-        },
-      });
-    } else {
-      await this.prisma.shipmentLine.create({
-        data: {
+    await this.prisma.$transaction(async (tx) => {
+      const existingLine = await tx.shipmentLine.findFirst({
+        where: {
           shipmentId,
           productId,
-          originalName: stockItem.product.name,
-          sku: stockItem.product.sku,
-          quantity,
-          expectedQuantity: quantity,
-          scannedQuantity: 0,
         },
       });
-    }
+
+      const line = existingLine
+        ? await tx.shipmentLine.update({
+            where: { id: existingLine.id },
+            data: {
+              quantity: { increment: quantity },
+              expectedQuantity: { increment: quantity },
+              scannedQuantity: { increment: quantity },
+            },
+          })
+        : await tx.shipmentLine.create({
+            data: {
+              shipmentId,
+              productId,
+              originalName: stockItem.product.name,
+              sku: stockItem.product.sku,
+              quantity,
+              expectedQuantity: quantity,
+              scannedQuantity: quantity,
+            },
+          });
+
+      await tx.shipmentScan.create({
+        data: {
+          lineId: line.id,
+          quantity,
+          isManual: true,
+          code: null,
+        },
+      });
+
+      const lines = await tx.shipmentLine.findMany({ where: { shipmentId } });
+      const status = this.deriveStatusFromLines(lines, shipment.type);
+      const updatedShipment = await tx.shipment.update({
+        where: { id: shipmentId },
+        data: { status },
+      });
+
+      await this.syncRequestStatusForShipment(tx, updatedShipment.requestId, status);
+    });
 
     return this.findById(shipmentId);
   }

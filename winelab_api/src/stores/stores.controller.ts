@@ -72,9 +72,9 @@ export class StoresController {
     async addEquipment(
         @Param('id') id: string,
         @Body() data: {
-            equipment: Array<{ category: string; stockItemId: string; comment: string }>;
+            equipment: Array<{ category: string; stockItemId?: string; productId?: string; comment: string }>;
             skipInventory: boolean;
-            warehouseId: string;
+            warehouseId?: string;
         }
     ) {
         return this.storesService.addEquipment(id, data);

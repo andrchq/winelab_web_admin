@@ -10,6 +10,15 @@ import {
     DialogDescription,
     DialogFooter,
 } from "@/components/ui/dialog";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,6 +64,7 @@ interface AddStoreEquipmentDialogProps {
 interface EquipmentItem {
     id: string;
     stockItemId: string;
+    productId: string;
     comment: string;
 }
 
@@ -68,6 +78,7 @@ interface EquipmentCategoryRow {
 interface AccessoryRow {
     id: string;
     stockItemId: string;
+    productId: string;
     comment: string;
 }
 
@@ -82,8 +93,10 @@ export function AddStoreEquipmentDialog({
 }: AddStoreEquipmentDialogProps) {
     const { user } = useAuth();
     const { data: stockItems, isLoading: stockLoading } = useStockItems();
+    const { data: products, isLoading: productsLoading } = useProducts();
     const [loading, setLoading] = useState(false);
     const [skipInventory, setSkipInventory] = useState(false);
+    const [skipInventoryInfoOpen, setSkipInventoryInfoOpen] = useState(false);
     const [warehouseId, setWarehouseId] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'mandatory' | 'accessory'>('mandatory');
@@ -104,7 +117,7 @@ export function AddStoreEquipmentDialog({
             setMandatoryRows(mandatoryCategories.map(cat => ({
                 category: cat, // Now passing full object
                 label: cat.name,
-                items: [{ id: uuidv4(), stockItemId: '', comment: '' }],
+                items: [{ id: uuidv4(), stockItemId: '', productId: '', comment: '' }],
                 isMandatory: true,
             })));
         }
@@ -112,7 +125,7 @@ export function AddStoreEquipmentDialog({
 
     // Accessory equipment rows (dynamic)
     const [accessoryRows, setAccessoryRows] = useState<AccessoryRow[]>([
-        { id: uuidv4(), stockItemId: '', comment: '' }
+        { id: uuidv4(), stockItemId: '', productId: '', comment: '' }
     ]);
 
     // Check if user can bypass inventory
@@ -125,11 +138,11 @@ export function AddStoreEquipmentDialog({
 
     // Filter stock items based on search and warehouse
     const filteredStockItems = useMemo(() => {
-        if (!stockItems || !warehouseId) return [];
+        if (!stockItems || (!skipInventory && !warehouseId)) return [];
 
         return stockItems.filter(item => {
-            // Filter by warehouse
-            if (item.warehouseId !== warehouseId) return false;
+            // Filter by warehouse only when stock is written off from a specific warehouse
+            if (!skipInventory && item.warehouseId !== warehouseId) return false;
 
             // Must have available quantity (unless skipInventory is on)
             const available = item.quantity - item.reserved;
@@ -147,13 +160,53 @@ export function AddStoreEquipmentDialog({
         });
     }, [stockItems, searchQuery, skipInventory, warehouseId]);
 
+    const filteredProducts = useMemo(() => {
+        return products.filter((product) => {
+            if (product.isActive === false) return false;
+
+            if (searchQuery) {
+                const query = searchQuery.toLowerCase();
+                const productName = product.name?.toLowerCase() || "";
+                const productSku = product.sku?.toLowerCase() || "";
+                if (!productName.includes(query) && !productSku.includes(query)) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }, [products, searchQuery]);
+
+    const resetSelections = () => {
+        setMandatoryRows((prev) => prev.map((row) => ({
+            ...row,
+            items: row.items.map((item) => ({ ...item, stockItemId: "", productId: "" })),
+        })));
+        setAccessoryRows((prev) => prev.map((row) => ({ ...row, stockItemId: "", productId: "" })));
+    };
+
+    const handleSkipInventoryChange = (checked: boolean) => {
+        setSkipInventory(checked);
+        resetSelections();
+
+        if (checked) {
+            setSkipInventoryInfoOpen(true);
+        }
+    };
+
+    const getEquipmentPlaceholder = () => {
+        if (skipInventory) return "Выберите оборудование";
+        if (warehouseId) return "— Не выбрано —";
+        return "Сначала выберите склад";
+    };
+
     // Add item to mandatory category
     const addMandatoryItem = (categoryIndex: number) => {
         setMandatoryRows(prev => {
             const updated = [...prev];
             updated[categoryIndex] = {
                 ...updated[categoryIndex],
-                items: [...updated[categoryIndex].items, { id: uuidv4(), stockItemId: '', comment: '' }]
+                items: [...updated[categoryIndex].items, { id: uuidv4(), stockItemId: '', productId: '', comment: '' }]
             };
             return updated;
         });
@@ -172,7 +225,7 @@ export function AddStoreEquipmentDialog({
     };
 
     // Update mandatory item
-    const updateMandatoryItem = (categoryIndex: number, itemId: string, field: 'stockItemId' | 'comment', value: string) => {
+    const updateMandatoryItem = (categoryIndex: number, itemId: string, field: 'stockItemId' | 'productId' | 'comment', value: string) => {
         setMandatoryRows(prev => {
             const updated = [...prev];
             updated[categoryIndex] = {
@@ -185,9 +238,28 @@ export function AddStoreEquipmentDialog({
         });
     };
 
+    const updateMandatorySelection = (categoryIndex: number, itemId: string, value: string) => {
+        setMandatoryRows((prev) => {
+            const updated = [...prev];
+            updated[categoryIndex] = {
+                ...updated[categoryIndex],
+                items: updated[categoryIndex].items.map((item) =>
+                    item.id === itemId
+                        ? {
+                            ...item,
+                            stockItemId: skipInventory ? "" : value,
+                            productId: skipInventory ? value : "",
+                        }
+                        : item,
+                ),
+            };
+            return updated;
+        });
+    };
+
     // Add accessory row
     const addAccessoryRow = () => {
-        setAccessoryRows(prev => [...prev, { id: uuidv4(), stockItemId: '', comment: '' }]);
+        setAccessoryRows(prev => [...prev, { id: uuidv4(), stockItemId: '', productId: '', comment: '' }]);
     };
 
     // Remove accessory row
@@ -196,9 +268,21 @@ export function AddStoreEquipmentDialog({
     };
 
     // Update accessory row
-    const updateAccessoryRow = (id: string, field: 'stockItemId' | 'comment', value: string) => {
+    const updateAccessoryRow = (id: string, field: 'stockItemId' | 'productId' | 'comment', value: string) => {
         setAccessoryRows(prev => prev.map(row =>
             row.id === id ? { ...row, [field]: value } : row
+        ));
+    };
+
+    const updateAccessorySelection = (id: string, value: string) => {
+        setAccessoryRows((prev) => prev.map((row) =>
+            row.id === id
+                ? {
+                    ...row,
+                    stockItemId: skipInventory ? "" : value,
+                    productId: skipInventory ? value : "",
+                }
+                : row,
         ));
     };
 
@@ -213,17 +297,19 @@ export function AddStoreEquipmentDialog({
         // Collect all equipment to add
         const equipmentToAdd: Array<{
             category: EquipmentCategory;
-            stockItemId: string;
+            stockItemId?: string;
+            productId?: string;
             comment: string;
         }> = [];
 
         // Add mandatory equipment
         mandatoryRows.forEach(row => {
             row.items.forEach(item => {
-                if (item.stockItemId) {
+                if ((skipInventory && item.productId) || (!skipInventory && item.stockItemId)) {
                     equipmentToAdd.push({
                         category: row.category,
-                        stockItemId: item.stockItemId,
+                        stockItemId: item.stockItemId || undefined,
+                        productId: item.productId || undefined,
                         comment: item.comment,
                     });
                 }
@@ -232,13 +318,16 @@ export function AddStoreEquipmentDialog({
 
         // Add accessory equipment
         accessoryRows.forEach(row => {
-            if (row.stockItemId) {
-                // Find stock item to get its category
-                const stockItem = stockItems?.find(s => s.id === row.stockItemId);
-                if (stockItem && stockItem.product?.category) {
+            if ((skipInventory && row.productId) || (!skipInventory && row.stockItemId)) {
+                const selectedCategory = skipInventory
+                    ? products.find((product) => product.id === row.productId)?.category
+                    : stockItems?.find((stockItem) => stockItem.id === row.stockItemId)?.product?.category;
+
+                if (selectedCategory) {
                     equipmentToAdd.push({
-                        category: stockItem.product.category,
-                        stockItemId: row.stockItemId,
+                        category: selectedCategory,
+                        stockItemId: row.stockItemId || undefined,
+                        productId: row.productId || undefined,
                         comment: row.comment,
                     });
                 }
@@ -271,10 +360,10 @@ export function AddStoreEquipmentDialog({
             setMandatoryRows(mandatoryCategories.map(cat => ({
                 category: cat,
                 label: cat.name,
-                items: [{ id: uuidv4(), stockItemId: '', comment: '' }],
+                items: [{ id: uuidv4(), stockItemId: '', productId: '', comment: '' }],
                 isMandatory: true,
             })));
-            setAccessoryRows([{ id: uuidv4(), stockItemId: '', comment: '' }]);
+            setAccessoryRows([{ id: uuidv4(), stockItemId: '', productId: '', comment: '' }]);
             setSkipInventory(false);
             setWarehouseId('');
 
@@ -292,11 +381,43 @@ export function AddStoreEquipmentDialog({
         onOpenChange(false);
     };
 
+    const renderStockItemOption = (item: StockItem) => (
+        <div className="flex items-center gap-2">
+            <span className="truncate">
+                {item.product?.name}
+            </span>
+            <Badge variant="outline" className="text-[10px] shrink-0">
+                {item.quantity - item.reserved} С€С‚.
+            </Badge>
+            {skipInventory && item.warehouse?.name && (
+                <Badge variant="secondary" className="text-[10px] shrink-0">
+                    {item.warehouse.name}
+                </Badge>
+            )}
+        </div>
+    );
+
+    const renderProductOption = (product: { name: string; sku: string; category?: EquipmentCategory }) => (
+        <div className="flex items-center gap-2">
+            <span className="truncate">
+                {product.name}
+            </span>
+            <Badge variant="outline" className="text-[10px] shrink-0">
+                {product.sku}
+            </Badge>
+            {product.category?.name && (
+                <Badge variant="secondary" className="text-[10px] shrink-0">
+                    {product.category.name}
+                </Badge>
+            )}
+        </div>
+    );
+
     // Count selected items
     const selectedMandatoryCount = mandatoryRows.reduce((sum, row) =>
-        sum + row.items.filter(item => item.stockItemId).length, 0
+        sum + row.items.filter(item => skipInventory ? item.productId : item.stockItemId).length, 0
     );
-    const selectedAccessoryCount = accessoryRows.filter(r => r.stockItemId).length;
+    const selectedAccessoryCount = accessoryRows.filter((row) => skipInventory ? row.productId : row.stockItemId).length;
     const totalSelected = selectedMandatoryCount + selectedAccessoryCount;
 
     return (
@@ -351,7 +472,8 @@ export function AddStoreEquipmentDialog({
                     <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
                         {/* Warehouse Selection and Controls (Now Scrollable) */}
                         <div className="space-y-3 bg-muted/30 p-3 rounded-xl border border-border/50">
-                            <div className="grid gap-3 sm:grid-cols-2">
+                            <div className={`grid gap-3 ${skipInventory ? "sm:grid-cols-1" : "sm:grid-cols-2"}`}>
+                                {!skipInventory && (
                                 <div className="space-y-1.5">
                                     <Label className="text-[10px] uppercase tracking-wider text-muted-foreground ml-1">Склад списания</Label>
                                     <Select
@@ -360,9 +482,9 @@ export function AddStoreEquipmentDialog({
                                             setWarehouseId(value);
                                             setMandatoryRows(prev => prev.map(r => ({
                                                 ...r,
-                                                items: r.items.map(item => ({ ...item, stockItemId: '' }))
+                                                items: r.items.map(item => ({ ...item, stockItemId: '', productId: '' }))
                                             })));
-                                            setAccessoryRows(prev => prev.map(r => ({ ...r, stockItemId: '' })));
+                                            setAccessoryRows(prev => prev.map(r => ({ ...r, stockItemId: '', productId: '' })));
                                         }}
                                     >
                                         <SelectTrigger className="h-9 text-sm">
@@ -377,6 +499,7 @@ export function AddStoreEquipmentDialog({
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                )}
 
                                 <div className="space-y-1.5">
                                     <Label className="text-[10px] uppercase tracking-wider text-muted-foreground ml-1">Поиск</Label>
@@ -410,14 +533,14 @@ export function AddStoreEquipmentDialog({
                                         id="skip-inventory"
                                         className="scale-75"
                                         checked={skipInventory}
-                                        onCheckedChange={setSkipInventory}
+                                        onCheckedChange={handleSkipInventoryChange}
                                     />
                                 </div>
                             )}
                         </div>
 
                         {/* Equipment List Content */}
-                        {stockLoading ? (
+                        {(stockLoading || (skipInventory && productsLoading)) ? (
                             <div className="flex items-center justify-center py-8">
                                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                             </div>
@@ -425,11 +548,16 @@ export function AddStoreEquipmentDialog({
                             <div className="space-y-3">
                                 {mandatoryRows.map((row, categoryIndex) => {
                                     const hasExisting = existingCategories.has(row.category.id);
-                                    const hasSelectedItems = row.items.some(item => item.stockItemId);
+                                    const hasSelectedItems = row.items.some(item => skipInventory ? item.productId : item.stockItemId);
 
                                     // Filter items for this specific category
                                     const categoryFilteredItems = filteredStockItems.filter(
                                         item => item.product?.category?.id === row.category.id
+                                    );
+                                    const categoryFilteredProducts = filteredProducts.filter(
+                                        (product) =>
+                                            product.category?.id === row.category.id ||
+                                            product.category?.parentId === row.category.id
                                     );
 
                                     return (
@@ -452,9 +580,9 @@ export function AddStoreEquipmentDialog({
                                                     {hasSelectedItems ? <Check className="h-3.5 w-3.5" /> : hasExisting ? <Check className="h-3.5 w-3.5" /> : categoryIndex + 1}
                                                 </div>
                                                 <span className="font-medium text-sm flex-1">{row.label}</span>
-                                                {row.items.filter(i => i.stockItemId).length > 0 && (
+                                                {row.items.filter(i => skipInventory ? i.productId : i.stockItemId).length > 0 && (
                                                     <Badge variant="secondary" className="text-[10px]">
-                                                        {row.items.filter(i => i.stockItemId).length} шт.
+                                                        {row.items.filter(i => skipInventory ? i.productId : i.stockItemId).length} шт.
                                                     </Badge>
                                                 )}
                                                 {hasExisting && !hasSelectedItems && (
@@ -471,32 +599,31 @@ export function AddStoreEquipmentDialog({
                                                         <div className="flex gap-2 items-start">
                                                             <div className="grid gap-2 sm:grid-cols-2 flex-1">
                                                                 <Select
-                                                                    value={item.stockItemId || "none"}
-                                                                    onValueChange={(value) => updateMandatoryItem(categoryIndex, item.id, 'stockItemId', value === "none" ? "" : value)}
-                                                                    disabled={!warehouseId}
+                                                                    value={(skipInventory ? item.productId : item.stockItemId) || "none"}
+                                                                    onValueChange={(value) => updateMandatorySelection(categoryIndex, item.id, value === "none" ? "" : value)}
+                                                                    disabled={!skipInventory && !warehouseId}
                                                                 >
                                                                     <SelectTrigger className="h-9 text-sm">
-                                                                        <SelectValue placeholder={warehouseId ? "— Не выбрано —" : "Сначала выберите склад"} />
+                                                                        <SelectValue placeholder={getEquipmentPlaceholder()} />
                                                                     </SelectTrigger>
                                                                     <SelectContent>
                                                                         <SelectItem value="none">— Не выбрано —</SelectItem>
-                                                                        {categoryFilteredItems.length === 0 ? (
+                                                                        {(skipInventory ? categoryFilteredProducts.length === 0 : categoryFilteredItems.length === 0) ? (
                                                                             <SelectItem value="no-match" disabled>
                                                                                 Нет подходящего оборудования
                                                                             </SelectItem>
                                                                         ) : (
-                                                                            categoryFilteredItems.map((stockItem) => (
-                                                                                <SelectItem key={stockItem.id} value={stockItem.id}>
-                                                                                    <div className="flex items-center gap-2">
-                                                                                        <span className="truncate">
-                                                                                            {stockItem.product?.name}
-                                                                                        </span>
-                                                                                        <Badge variant="outline" className="text-[10px] shrink-0">
-                                                                                            {stockItem.quantity - stockItem.reserved} шт.
-                                                                                        </Badge>
-                                                                                    </div>
-                                                                                </SelectItem>
-                                                                            ))
+                                                                            skipInventory
+                                                                                ? categoryFilteredProducts.map((product) => (
+                                                                                    <SelectItem key={product.id} value={product.id}>
+                                                                                        {renderProductOption(product)}
+                                                                                    </SelectItem>
+                                                                                ))
+                                                                                : categoryFilteredItems.map((stockItem) => (
+                                                                                    <SelectItem key={stockItem.id} value={stockItem.id}>
+                                                                                        {renderStockItemOption(stockItem)}
+                                                                                    </SelectItem>
+                                                                                ))
                                                                         )}
                                                                     </SelectContent>
                                                                 </Select>
@@ -544,17 +671,17 @@ export function AddStoreEquipmentDialog({
                                 {accessoryRows.map((row, index) => (
                                     <div
                                         key={row.id}
-                                        className={`p-3 rounded-lg border transition-colors ${row.stockItemId
+                                        className={`p-3 rounded-lg border transition-colors ${skipInventory ? row.productId : row.stockItemId
                                             ? 'border-green-500/50 bg-green-500/5'
                                             : 'border-border/50 bg-card'
                                             }`}
                                     >
                                         <div className="flex items-center gap-2 mb-2">
-                                            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-medium ${row.stockItemId
+                                            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-medium ${skipInventory ? row.productId : row.stockItemId
                                                 ? 'bg-green-500 text-white'
                                                 : 'bg-muted text-muted-foreground'
                                                 }`}>
-                                                {row.stockItemId ? <Check className="h-3.5 w-3.5" /> : index + 1}
+                                                {(skipInventory ? row.productId : row.stockItemId) ? <Check className="h-3.5 w-3.5" /> : index + 1}
                                             </div>
                                             <span className="font-medium text-sm flex-1">Сопутствующее #{index + 1}</span>
                                             {accessoryRows.length > 1 && (
@@ -572,27 +699,26 @@ export function AddStoreEquipmentDialog({
 
                                         <div className="grid gap-2 sm:grid-cols-2">
                                             <Select
-                                                value={row.stockItemId || "none"}
-                                                onValueChange={(value) => updateAccessoryRow(row.id, 'stockItemId', value === "none" ? "" : value)}
-                                                disabled={!warehouseId}
+                                                value={(skipInventory ? row.productId : row.stockItemId) || "none"}
+                                                onValueChange={(value) => updateAccessorySelection(row.id, value === "none" ? "" : value)}
+                                                disabled={!skipInventory && !warehouseId}
                                             >
                                                 <SelectTrigger className="h-9 text-sm">
-                                                    <SelectValue placeholder={warehouseId ? "Выберите оборудование" : "Сначала выберите склад"} />
+                                                    <SelectValue placeholder={skipInventory ? "Выберите оборудование" : warehouseId ? "Выберите оборудование" : "Сначала выберите склад"} />
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="none">— Не выбрано —</SelectItem>
-                                                    {filteredStockItems.map((item) => (
-                                                        <SelectItem key={item.id} value={item.id}>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="truncate">
-                                                                    {item.product?.name}
-                                                                </span>
-                                                                <Badge variant="outline" className="text-[10px] shrink-0">
-                                                                    {item.quantity - item.reserved} шт.
-                                                                </Badge>
-                                                            </div>
-                                                        </SelectItem>
-                                                    ))}
+                                                    {skipInventory
+                                                        ? filteredProducts.map((product) => (
+                                                            <SelectItem key={product.id} value={product.id}>
+                                                                {renderProductOption(product)}
+                                                            </SelectItem>
+                                                        ))
+                                                        : filteredStockItems.map((item) => (
+                                                            <SelectItem key={item.id} value={item.id}>
+                                                                {renderStockItemOption(item)}
+                                                            </SelectItem>
+                                                        ))}
                                                 </SelectContent>
                                             </Select>
 
@@ -645,6 +771,21 @@ export function AddStoreEquipmentDialog({
                     </div>
                 </DialogFooter>
             </DialogContent>
+            <AlertDialog open={skipInventoryInfoOpen} onOpenChange={setSkipInventoryInfoOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Режим &quot;Без учета&quot;</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            После включения этого режима склад выбирать не нужно. Оборудование будет добавлено в магазин без списания со склада и как позиция без привязанного ШК. Позже этот ШК можно будет привязать через приемку.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction onClick={() => setSkipInventoryInfoOpen(false)}>
+                            Понятно
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </Dialog>
     );
 }

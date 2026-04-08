@@ -26,6 +26,19 @@ export default function DeliveriesPage() {
     const { data: deliveries, isLoading, error } = useDeliveries();
     const [search, setSearch] = useState("");
 
+    const getDeliveryItemsCount = (delivery: any) => {
+        const lineCount = delivery.shipment?.lines?.reduce(
+            (sum: number, line: any) => sum + Number(line.scannedQuantity || 0),
+            0,
+        );
+
+        if (typeof lineCount === "number" && lineCount > 0) {
+            return lineCount;
+        }
+
+        return delivery.shipment?._count?.items || delivery.shipment?._count?.lines || 0;
+    };
+
     // Compute stats
     const stats = useMemo(() => {
         const inTransit = deliveries.filter(d => ['IN_TRANSIT', 'PICKED_UP'].includes(d.status)).length;
@@ -189,7 +202,7 @@ export default function DeliveriesPage() {
                                             <div className="flex items-center gap-6 text-sm text-muted-foreground">
                                                 <div className="flex items-center gap-1.5">
                                                     <Package className="h-4 w-4" />
-                                                    <span>{delivery.shipment?._count?.items || 0} ед.</span>
+                                                    <span>{getDeliveryItemsCount(delivery)} ед.</span>
                                                 </div>
                                                 {delivery.courierName && (
                                                     <div className="flex items-center gap-1.5 hidden sm:flex">

@@ -174,8 +174,8 @@ export function Sidebar() {
                 <Link
                     href="/"
                     className={cn(
-                        "group flex items-center min-w-0 transition-all duration-300 ease-out",
-                        collapsed ? "justify-center w-full" : "gap-3 w-full",
+                        "group flex min-w-0 items-center transition-all duration-300 ease-out min-h-11",
+                        collapsed ? "mx-auto w-11 justify-center" : "gap-3 w-full",
                     )}
                 >
                     <Image
@@ -186,7 +186,7 @@ export function Sidebar() {
                         priority
                         className={cn(
                             "rounded-xl object-cover shadow-lg shadow-violet-500/20 transition-all duration-300 ease-out group-hover:scale-105",
-                            collapsed ? "h-10 w-10" : "h-11 w-11",
+                            "h-11 w-11",
                         )}
                     />
                     {!collapsed && (
@@ -199,8 +199,8 @@ export function Sidebar() {
                 <button
                     onClick={toggleCollapsed}
                     className={cn(
-                        "mt-3 flex items-center rounded-xl border border-border/50 text-muted-foreground transition-all duration-300 ease-out hover:bg-muted hover:text-foreground active:scale-[0.98]",
-                        collapsed ? "mx-auto h-10 w-10 justify-center" : "h-11 w-full justify-between px-4",
+                        "mt-3 flex h-11 items-center rounded-xl border border-border/50 text-muted-foreground transition-all duration-300 ease-out hover:bg-muted hover:text-foreground active:scale-[0.98]",
+                        collapsed ? "mx-auto w-11 justify-center" : "w-full justify-between px-4",
                     )}
                     aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
                 >
@@ -217,25 +217,36 @@ export function Sidebar() {
                 </button>
             </div>
 
-            <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-4">
-                {navGroups.map((group) => (
+            <nav className="sidebar-scroll flex-1 overflow-y-auto overflow-x-hidden py-4 px-3 space-y-4">
+                {navGroups.map((group, groupIndex) => (
                     <div key={group.title}>
-                        {!collapsed && group.title !== "Основное" && (
+                        {groupIndex > 0 && (
                             <div
-                                className="flex items-center justify-between px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
-                                onClick={() => toggleGroup(group.title)}
+                                className={cn(
+                                    "relative flex min-h-[32px] items-center justify-between px-3 py-2 text-xs font-medium uppercase tracking-wider transition-colors",
+                                    collapsed
+                                        ? "mx-auto w-11 cursor-default justify-center px-0 text-transparent"
+                                        : "cursor-pointer text-muted-foreground hover:text-foreground",
+                                )}
+                                onClick={collapsed ? undefined : () => toggleGroup(group.title)}
+                                title={collapsed ? group.title : undefined}
                             >
-                                {group.title}
+                                <span>{group.title}</span>
                                 <ChevronLeft
                                     className={cn(
                                         "h-3 w-3 transition-transform duration-200",
-                                        openGroups[group.title] ? "-rotate-90" : "rotate-0",
+                                        collapsed ? "opacity-0" : openGroups[group.title] ? "-rotate-90" : "rotate-0",
                                     )}
                                 />
+                                {collapsed && (
+                                    <div className="pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 justify-center">
+                                        <div className="h-px w-6 rounded-full bg-border/70" />
+                                    </div>
+                                )}
                             </div>
                         )}
 
-                        {(group.title === "Основное" || openGroups[group.title] || collapsed) && (
+                        {(groupIndex === 0 || openGroups[group.title] || collapsed) && (
                             <ul className="space-y-1">
                                 {group.items
                                     .filter((item) => !item.roles || hasRole([...item.roles]))
@@ -249,9 +260,9 @@ export function Sidebar() {
                                                 <Link
                                                     href={item.href}
                                                     className={cn(
-                                                        "sidebar-item relative border border-border/30 rounded-lg",
+                                                        "sidebar-item relative min-h-[46px] rounded-lg border border-border/30",
                                                         isActive && "sidebar-item-active",
-                                                        collapsed && "justify-center px-2",
+                                                        collapsed && "mx-auto w-11 justify-center px-0",
                                                     )}
                                                     title={collapsed ? item.name : undefined}
                                                 >
@@ -289,8 +300,8 @@ export function Sidebar() {
                 <button
                     onClick={() => logout()}
                     className={cn(
-                        "sidebar-item w-full text-destructive hover:bg-destructive/10 hover:text-destructive",
-                        collapsed && "justify-center px-2",
+                        "sidebar-item min-h-[46px] w-full text-destructive hover:bg-destructive/10 hover:text-destructive",
+                        collapsed && "mx-auto w-11 justify-center px-0",
                     )}
                     title={collapsed ? "Выйти" : undefined}
                 >

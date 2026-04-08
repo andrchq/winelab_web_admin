@@ -620,6 +620,11 @@ export default function StoreDetailPage() {
                                                                                 <div>
                                                                                     <p className="font-medium text-sm flex items-center gap-2">
                                                                                         {item.product?.name}
+                                                                                        {item.isUnidentified && (
+                                                                                            <Badge variant="outline" className="px-1.5 py-0 h-4 text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/20">
+                                                                                                Без ШК
+                                                                                            </Badge>
+                                                                                        )}
                                                                                         {item._count?.assetHistory > 0 && (
                                                                                             <Badge variant="secondary" className="px-1.5 py-0 h-4 text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/20" title="Комментарии пользователей">
                                                                                                 <MessageSquare className="h-3 w-3 mr-1" />
@@ -627,7 +632,9 @@ export default function StoreDetailPage() {
                                                                                             </Badge>
                                                                                         )}
                                                                                     </p>
-                                                                                    <p className="text-xs text-muted-foreground font-mono">{item.serialNumber}</p>
+                                                                                    <p className="text-xs text-muted-foreground font-mono">
+                                                                                        {item.isUnidentified ? "ШК не привязан" : item.serialNumber}
+                                                                                    </p>
                                                                                 </div>
                                                                             </div>
                                                                             <div className="flex items-center gap-2">

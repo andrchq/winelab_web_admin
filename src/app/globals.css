@@ -483,6 +483,15 @@ body {
   color: hsl(var(--primary));
 }
 
+.sidebar-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 /* ========================================
    BUTTON VARIANTS
    ======================================== */

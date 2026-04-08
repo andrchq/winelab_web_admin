@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Warehouse, MapPin, Package, AlertTriangle, User as UserIcon, Store as StoreIcon, Activity } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { YandexMap } from "@/components/maps";
+import { initialInventoryApi } from "@/lib/api";
+import { toast } from "sonner";
 
 export default function WarehouseDetailsPage() {
     const params = useParams();
@@ -16,6 +18,7 @@ export default function WarehouseDetailsPage() {
 
     const [showAllCritical, setShowAllCritical] = useState(false);
     const [showAllSufficient, setShowAllSufficient] = useState(false);
+    const [isStartingInitialInventory, setIsStartingInitialInventory] = useState(false);
 
     const { data: warehouse, isLoading, error } = useWarehouse(id);
 
@@ -98,6 +101,22 @@ export default function WarehouseDetailsPage() {
         });
     };
 
+    const handleStartInitialInventory = async () => {
+        if (!warehouse || isStartingInitialInventory) return;
+
+        setIsStartingInitialInventory(true);
+        try {
+            const session = await initialInventoryApi.start(warehouse.id);
+            toast.success("Первичная инвентаризация открыта");
+            router.push(`/inventory/initial/${session.id}`);
+        } catch (error: any) {
+            console.error(error);
+            toast.error(error?.message || "Не удалось открыть первичную инвентаризацию");
+        } finally {
+            setIsStartingInitialInventory(false);
+        }
+    };
+
     if (isLoading) {
         return (
             <div className="flex flex-1 items-center justify-center p-6">
@@ -145,19 +164,49 @@ export default function WarehouseDetailsPage() {
                                 <Button variant="ghost" size="icon" onClick={() => router.back()}>
                                     <ArrowLeft className="h-4 w-4" />
                                 </Button>
-                                <div>
-                                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                                        <Warehouse className="h-6 w-6 text-primary" />
-                                        {warehouse.name}
-                                    </h1>
-                                    {warehouse.address && (
-                                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
-                                            <MapPin className="h-3.5 w-3.5" />
-                                            {warehouse.address}
-                                        </div>
-                                    )}
+                                <div className="flex flex-1 items-start justify-between gap-4">
+                                    <div>
+                                        <h1 className="text-2xl font-bold flex items-center gap-2">
+                                            <Warehouse className="h-6 w-6 text-primary" />
+                                            {warehouse.name}
+                                        </h1>
+                                        {warehouse.address && (
+                                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
+                                                <MapPin className="h-3.5 w-3.5" />
+                                                {warehouse.address}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex flex-col items-end gap-2">
+                                        {warehouse.initialInventoryCompletedAt ? (
+                                            <>
+                                                <Badge variant="success">Первичная инвентаризация завершена</Badge>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {formatDateOnly(warehouse.initialInventoryCompletedAt)}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Badge variant="secondary">Склад не инициализирован</Badge>
+                                                <Button onClick={handleStartInitialInventory} disabled={isStartingInitialInventory}>
+                                                    {isStartingInitialInventory ? "Открываем..." : "Первичная инвентаризация"}
+                                                </Button>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
+
+                            {!warehouse.initialInventoryCompletedAt && (
+                                <Card className="mb-6 border-amber-500/20 bg-amber-500/5">
+                                    <CardContent className="p-4 text-sm text-amber-900">
+                                        Для нового склада сначала пройдите первичную инвентаризацию. В этом режиме можно
+                                        сканировать серийное оборудование блоками и заносить количественные товары без
+                                        обычной приемки.
+                                    </CardContent>
+                                </Card>
+                            )}
 
                             {/* Stats Cards */}
                             <div className="grid gap-4 md:grid-cols-2">

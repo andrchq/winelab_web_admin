@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Public } from '../auth/decorators/public.decorator';
 import { DeliveryStatus } from '@prisma/client';
 
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
@@ -14,6 +15,13 @@ import { DeliveriesService } from './deliveries.service';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DeliveriesController {
     constructor(private deliveriesService: DeliveriesService) {}
+
+    @Post('provider/yandex/webhook')
+    @Public()
+    @ApiOperation({ summary: 'Yandex Delivery webhook callback' })
+    async yandexWebhook(@Body() payload: any) {
+        return this.deliveriesService.syncYandexCallback(payload);
+    }
 
     @Get()
     @RequirePermissions(SystemPermission.DELIVERY_READ)

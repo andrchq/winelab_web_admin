@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -35,6 +35,16 @@ export class InventoryController {
         @Request() req: any
     ) {
         return this.inventoryService.scanItem(id, body.barcode, req.user.id);
+    }
+
+    @Patch(':id/quantity/:recordId')
+    @Roles('ADMIN', 'MANAGER', 'WAREHOUSE')
+    async setQuantityCount(
+        @Param('id') id: string,
+        @Param('recordId') recordId: string,
+        @Body() body: { countedQuantity: number },
+    ) {
+        return this.inventoryService.setQuantityCount(id, recordId, body.countedQuantity);
     }
 
     @Post(':id/finish')

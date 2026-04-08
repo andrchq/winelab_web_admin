@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, StatCard } f
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useStockItems } from "@/lib/hooks";
+import { useStockItems, useWarehouses } from "@/lib/hooks";
 import { AddStockDialog } from "@/components/stock/add-stock-dialog";
 import { AddProductDialog } from "@/components/stock/add-product-dialog";
 import { StockManagerDialog } from "@/components/stock/stock-manager-dialog";
@@ -31,7 +31,8 @@ interface GroupedStock {
 }
 
 export default function StockPage() {
-    const { data: stockItems, isLoading, refetch } = useStockItems();
+    const { data: stockItems, isLoading: stockLoading, refetch: refetchStock } = useStockItems();
+    const { data: warehouses, isLoading: warehousesLoading, refetch: refetchWarehouses } = useWarehouses();
     const { hasRole } = useAuth();
 
     const searchParams = useSearchParams();
@@ -50,13 +51,30 @@ export default function StockPage() {
         items: []
     });
 
+    const refetch = async () => {
+        await Promise.all([refetchStock(), refetchWarehouses()]);
+    };
+
+    const displayStockItems = useMemo(() => {
+        return (warehouses || []).flatMap((warehouse) =>
+            (warehouse.stockItems || []).map((item) => ({
+                ...item,
+                warehouseId: item.warehouseId || warehouse.id,
+                warehouse: item.warehouse || {
+                    id: warehouse.id,
+                    name: warehouse.name,
+                },
+            })),
+        );
+    }, [warehouses]);
+
     // Grouping Logic
     const groupedItmes = useMemo(() => {
-        if (!stockItems) return [];
+        if (!displayStockItems.length) return [];
 
         const groups: Record<string, GroupedStock> = {};
 
-        stockItems.forEach(item => {
+        displayStockItems.forEach(item => {
             const pid = item.product?.id;
             if (!pid || !item.product) return;
 
@@ -87,11 +105,11 @@ export default function StockPage() {
             else g.status = 'ok';
             return g;
         });
-    }, [stockItems]);
+    }, [displayStockItems]);
 
 
     const categories = useMemo(() => {
-        const cats = new Set(groupedItmes.map(g => g.product.category.name));
+        const cats = new Set(groupedItmes.map(g => g.product.category?.name).filter(Boolean));
         return Array.from(cats).sort();
     }, [groupedItmes]);
 
@@ -102,7 +120,7 @@ export default function StockPage() {
                 g.product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 g.product.sku.toLowerCase().includes(searchTerm.toLowerCase());
 
-            const matchesCategory = categoryFilter === "all" || g.product.category.name === categoryFilter;
+            const matchesCategory = categoryFilter === "all" || g.product.category?.name === categoryFilter;
             const matchesLow = showLowStock ? g.status === 'low' || g.status === 'out' || g.status === 'reserve' : true;
 
             return matchesSearch && matchesCategory && matchesLow;
@@ -116,10 +134,14 @@ export default function StockPage() {
 
 
     const handleEditClick = (group: GroupedStock) => {
+        if (group.product.accountingType !== 'QUANTITY') {
+            return;
+        }
+
         setManagerState({
             open: true,
             product: group.product,
-            items: group.items
+            items: stockItems.filter((item) => item.productId === group.product.id)
         });
     };
 
@@ -246,7 +268,7 @@ export default function StockPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {isLoading ? (
+                                    {stockLoading || warehousesLoading ? (
                                         <tr>
                                             <td colSpan={8} className="text-center py-4 text-muted-foreground">
                                                 Загрузка данных...
@@ -351,7 +373,7 @@ export default function StockPage() {
                                                             </div>
                                                         </td>
                                                         <td onClick={(e) => e.stopPropagation()}>
-                                                            {hasRole(['ADMIN', 'MANAGER', 'WAREHOUSE']) && (
+                                                            {hasRole(['ADMIN', 'MANAGER', 'WAREHOUSE']) && group.product.accountingType === 'QUANTITY' && (
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="sm"

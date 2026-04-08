@@ -30,7 +30,7 @@ $form.Controls.Add($titleLabel)
 # Status Panel
 $statusPanel = New-Object System.Windows.Forms.Panel
 $statusPanel.Location = New-Object System.Drawing.Point(20, 65)
-$statusPanel.Size = New-Object System.Drawing.Size(460, 90)
+$statusPanel.Size = New-Object System.Drawing.Size(460, 150)
 $statusPanel.BackColor = [System.Drawing.Color]::FromArgb(40, 40, 50)
 $statusPanel.Anchor = "Top, Left, Right"
 $form.Controls.Add($statusPanel)
@@ -89,10 +89,27 @@ $pgAdminStatus.ForeColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
 $pgAdminStatus.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $statusPanel.Controls.Add($pgAdminStatus)
 
+# Metrics Status
+$metricsTitleLabel = New-Object System.Windows.Forms.Label
+$metricsTitleLabel.Text = "Project Load:"
+$metricsTitleLabel.Location = New-Object System.Drawing.Point(15, 120)
+$metricsTitleLabel.Size = New-Object System.Drawing.Size(180, 25)
+$metricsTitleLabel.ForeColor = [System.Drawing.Color]::White
+$metricsTitleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$statusPanel.Controls.Add($metricsTitleLabel)
+
+$script:metricsLabel = New-Object System.Windows.Forms.Label
+$script:metricsLabel.Text = "CPU: 0% | RAM: 0 MB"
+$script:metricsLabel.Location = New-Object System.Drawing.Point(200, 120)
+$script:metricsLabel.Size = New-Object System.Drawing.Size(250, 25)
+$script:metricsLabel.ForeColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
+$script:metricsLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$statusPanel.Controls.Add($script:metricsLabel)
+
 # Log Label
 $logLabel = New-Object System.Windows.Forms.Label
 $logLabel.Text = "Log View:"
-$logLabel.Location = New-Object System.Drawing.Point(20, 165)
+$logLabel.Location = New-Object System.Drawing.Point(20, 225)
 $logLabel.Size = New-Object System.Drawing.Size(80, 20)
 $logLabel.ForeColor = [System.Drawing.Color]::Gray
 $logLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
@@ -101,7 +118,7 @@ $form.Controls.Add($logLabel)
 # Buttons for selecting logs
 $btnLogManager = New-Object System.Windows.Forms.Button
 $btnLogManager.Text = "Manager"
-$btnLogManager.Location = New-Object System.Drawing.Point(105, 160)
+$btnLogManager.Location = New-Object System.Drawing.Point(105, 220)
 $btnLogManager.Size = New-Object System.Drawing.Size(80, 25)
 $btnLogManager.FlatStyle = "Flat"
 $btnLogManager.FlatAppearance.BorderSize = 0
@@ -112,7 +129,7 @@ $btnLogManager.Cursor = [System.Windows.Forms.Cursors]::Hand
 
 $btnLogApi = New-Object System.Windows.Forms.Button
 $btnLogApi.Text = "API"
-$btnLogApi.Location = New-Object System.Drawing.Point(195, 160)
+$btnLogApi.Location = New-Object System.Drawing.Point(195, 220)
 $btnLogApi.Size = New-Object System.Drawing.Size(80, 25)
 $btnLogApi.FlatStyle = "Flat"
 $btnLogApi.FlatAppearance.BorderSize = 0
@@ -123,7 +140,7 @@ $btnLogApi.Cursor = [System.Windows.Forms.Cursors]::Hand
 
 $btnLogFrontend = New-Object System.Windows.Forms.Button
 $btnLogFrontend.Text = "Frontend"
-$btnLogFrontend.Location = New-Object System.Drawing.Point(285, 160)
+$btnLogFrontend.Location = New-Object System.Drawing.Point(285, 220)
 $btnLogFrontend.Size = New-Object System.Drawing.Size(80, 25)
 $btnLogFrontend.FlatStyle = "Flat"
 $btnLogFrontend.FlatAppearance.BorderSize = 0
@@ -134,7 +151,7 @@ $btnLogFrontend.Cursor = [System.Windows.Forms.Cursors]::Hand
 
 $btnClearLog = New-Object System.Windows.Forms.Button
 $btnClearLog.Text = "Clear Log"
-$btnClearLog.Location = New-Object System.Drawing.Point(380, 160)
+$btnClearLog.Location = New-Object System.Drawing.Point(380, 220)
 $btnClearLog.Size = New-Object System.Drawing.Size(100, 25)
 $btnClearLog.FlatStyle = "Flat"
 $btnClearLog.FlatAppearance.BorderSize = 0
@@ -153,8 +170,8 @@ $form.Controls.Add($btnClearLog)
 $logBox = New-Object System.Windows.Forms.TextBox
 $logBox.Multiline = $true
 $logBox.ScrollBars = "Vertical"
-$logBox.Location = New-Object System.Drawing.Point(20, 195)
-$logBox.Size = New-Object System.Drawing.Size(460, 250)
+$logBox.Location = New-Object System.Drawing.Point(20, 255)
+$logBox.Size = New-Object System.Drawing.Size(460, 190)
 $logBox.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 25)
 $logBox.ForeColor = [System.Drawing.Color]::FromArgb(74, 222, 128)
 $logBox.Font = New-Object System.Drawing.Font("Consolas", 9)
@@ -307,6 +324,12 @@ $script:frontendLogFile = Join-Path $env:TEMP "WineLab_Frontend_$(Get-Random).lo
 $script:apiLogPos = 0
 $script:frontendLogPos = 0
 
+# Get script directory
+$script:scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $script:scriptDir) { $script:scriptDir = Get-Location }
+
+# (Metrics logging removed)
+
 function Start-ApiServer {
     Write-Log "Starting API server..."
     $apiLogBox.Clear()
@@ -442,9 +465,7 @@ $stopPgButton.Anchor = "Bottom"
 Style-Button $stopPgButton ([System.Drawing.Color]::FromArgb(220, 38, 38))
 $form.Controls.Add($stopPgButton)
 
-# Get script directory
-$script:scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $script:scriptDir) { $script:scriptDir = Get-Location }
+# (Script directory initialized earlier)
 
 # START Click Handler
 $startButton.Add_Click({
@@ -576,6 +597,49 @@ $timer.Add_Tick({
                 $fs.Close()
             }
         } catch {}
+    }
+
+    # Process Metrics Update
+    try {
+        $pids = @()
+        if ($script:apiProcessId) { $pids += $script:apiProcessId }
+        if ($script:frontendProcessId) { $pids += $script:frontendProcessId }
+
+        # Find child node processes related to winelab
+        if ($pids.Count -gt 0) {
+            $nodeProcs = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue
+            foreach ($np in $nodeProcs) {
+                if ($np.CommandLine -match "winelab|next|nest") {
+                    if ($pids -notcontains $np.ProcessId) {
+                        $pids += $np.ProcessId
+                    }
+                }
+            }
+        }
+
+        if ($pids.Count -gt 0) {
+            $procs = Get-Process -Id $pids -ErrorAction SilentlyContinue
+            if ($procs) {
+                $ramMB = [math]::Round((($procs | Measure-Object WorkingSet64 -Sum).Sum / 1MB), 1)
+                
+                # Fetch CPU
+                $cpuQuery = Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -ErrorAction SilentlyContinue | Where-Object { $_.IDProcess -in $pids }
+                $cpuPercent = 0
+                if ($cpuQuery) {
+                    $cpuPercent = ($cpuQuery | Measure-Object PercentProcessorTime -Sum).Sum
+                }
+
+                $script:metricsLabel.Text = "CPU: $cpuPercent% | RAM: $ramMB MB"
+                
+                # Log to CSV (removed)
+            } else {
+                $script:metricsLabel.Text = "CPU: 0% | RAM: 0 MB"
+            }
+        } else {
+            $script:metricsLabel.Text = "CPU: 0% | RAM: 0 MB"
+        }
+    } catch {
+        # Ignore errors during metric parsing
     }
 })
 $timer.Start()

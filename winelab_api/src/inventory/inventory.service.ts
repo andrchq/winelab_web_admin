@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 export const InventoryStatus = {
@@ -22,7 +22,8 @@ export class InventoryService {
             include: {
                 warehouse: true,
                 createdBy: true,
-                records: true, // Maybe count is enough?
+                records: true,
+                quantityRecords: true,
             },
             orderBy: {
                 createdAt: 'desc',
@@ -43,13 +44,20 @@ export class InventoryService {
                                 warehouse: true,
                                 store: true,
                                 product: {
-                                    include: { category: true }
-                                }
-                            }
+                                    include: { category: true },
+                                },
+                            },
                         },
                         scannedBy: true,
-                    }
-                }
+                    },
+                },
+                quantityRecords: {
+                    include: {
+                        product: {
+                            include: { category: true },
+                        },
+                    },
+                },
             },
         });
 
@@ -74,8 +82,20 @@ export class InventoryService {
 
         const assets = await this.prisma.asset.findMany({
             where: {
-                warehouseId: warehouseId,
-                condition: { not: 'DECOMMISSIONED' }
+                warehouseId,
+                condition: { not: 'DECOMMISSIONED' },
+            },
+        });
+
+        const quantityItems = await this.prisma.stockItem.findMany({
+            where: {
+                warehouseId,
+                product: {
+                    accountingType: 'QUANTITY' as any,
+                },
+            },
+            include: {
+                product: true,
             },
         });
 
@@ -89,10 +109,21 @@ export class InventoryService {
 
         if (assets.length > 0) {
             await this.prisma.inventoryRecord.createMany({
-                data: assets.map(asset => ({
+                data: assets.map((asset) => ({
                     inventorySessionId: session.id,
                     assetId: asset.id,
                     status: InventoryStatus.EXPECTED,
+                })),
+            });
+        }
+
+        if (quantityItems.length > 0) {
+            await this.prisma.inventoryQuantityRecord.createMany({
+                data: quantityItems.map((item) => ({
+                    inventorySessionId: session.id,
+                    productId: item.productId,
+                    expectedQuantity: item.quantity,
+                    countedQuantity: 0,
                 })),
             });
         }
@@ -110,7 +141,6 @@ export class InventoryService {
             throw new BadRequestException('Session is not in progress');
         }
 
-        // 1. Find Asset
         const asset = await this.prisma.asset.findFirst({
             where: {
                 serialNumber: {
@@ -121,15 +151,14 @@ export class InventoryService {
             include: {
                 warehouse: true,
                 store: true,
-                product: { include: { category: true } }
-            }
+                product: { include: { category: true } },
+            },
         });
 
         if (!asset) {
             throw new NotFoundException(`Asset with serial ${barcode} not found`);
         }
 
-        // 2. Find Existing Record in this session
         const existingRecord = await this.prisma.inventoryRecord.findUnique({
             where: {
                 inventorySessionId_assetId: {
@@ -142,7 +171,6 @@ export class InventoryService {
         let record;
 
         if (existingRecord) {
-            // It was expected (or already extra)
             if (existingRecord.status === InventoryStatus.SCANNED) {
                 return {
                     record: existingRecord,
@@ -167,7 +195,6 @@ export class InventoryService {
                 },
             });
         } else {
-            // It was NOT expected (Extra)
             record = await this.prisma.inventoryRecord.create({
                 data: {
                     inventorySessionId: sessionId,
@@ -193,6 +220,41 @@ export class InventoryService {
         };
     }
 
+    async setQuantityCount(sessionId: string, recordId: string, countedQuantity: number) {
+        const session = await this.prisma.inventorySession.findUnique({
+            where: { id: sessionId },
+        });
+
+        if (!session) throw new NotFoundException('Session not found');
+        if (session.status !== SessionStatus.IN_PROGRESS) {
+            throw new BadRequestException('Session is not in progress');
+        }
+        if (countedQuantity < 0) {
+            throw new BadRequestException('Counted quantity cannot be negative');
+        }
+
+        const record = await this.prisma.inventoryQuantityRecord.findFirst({
+            where: {
+                id: recordId,
+                inventorySessionId: sessionId,
+            },
+        });
+
+        if (!record) {
+            throw new NotFoundException('Quantity record not found');
+        }
+
+        return this.prisma.inventoryQuantityRecord.update({
+            where: { id: recordId },
+            data: { countedQuantity },
+            include: {
+                product: {
+                    include: { category: true },
+                },
+            },
+        });
+    }
+
     async finishSession(id: string) {
         const session: any = await this.findOne(id);
         if (session.status !== SessionStatus.IN_PROGRESS) {
@@ -209,12 +271,12 @@ export class InventoryService {
 
         return {
             session: updated,
-            summary: this.buildSummary(session.records),
+            summary: this.buildSummary(session.records, session.quantityRecords || []),
         };
     }
 
     async applyAdjustments(id: string, userId: string) {
-        const session = await this.findOne(id);
+        const session: any = await this.findOne(id);
 
         if (session.status !== SessionStatus.COMPLETED) {
             throw new BadRequestException('Корректировки можно применять только после завершения инвентаризации');
@@ -224,8 +286,9 @@ export class InventoryService {
             throw new BadRequestException('Корректировки по этой инвентаризации уже применены');
         }
 
-        const missingRecords = session.records.filter((record) => record.status === InventoryStatus.EXPECTED);
-        const extraRecords = session.records.filter((record) => record.status === InventoryStatus.EXTRA);
+        const missingRecords = session.records.filter((record: any) => record.status === InventoryStatus.EXPECTED);
+        const extraRecords = session.records.filter((record: any) => record.status === InventoryStatus.EXTRA);
+        const quantityRecords = session.quantityRecords || [];
 
         await this.prisma.$transaction(async (tx) => {
             for (const record of missingRecords) {
@@ -233,6 +296,7 @@ export class InventoryService {
                     where: { id: record.assetId },
                     data: {
                         warehouseId: null,
+                        warehouseBinId: null,
                         processStatus: 'UNSERVICED' as any,
                     },
                 });
@@ -257,6 +321,7 @@ export class InventoryService {
                     where: { id: record.assetId },
                     data: {
                         warehouseId: session.warehouseId,
+                        warehouseBinId: null,
                         storeId: null,
                         processStatus: 'AVAILABLE' as any,
                     },
@@ -277,6 +342,37 @@ export class InventoryService {
                 });
             }
 
+            for (const quantityRecord of quantityRecords) {
+                const existingStockItem = await tx.stockItem.findUnique({
+                    where: {
+                        productId_warehouseId: {
+                            productId: quantityRecord.productId,
+                            warehouseId: session.warehouseId,
+                        },
+                    },
+                });
+
+                if (existingStockItem) {
+                    await tx.stockItem.update({
+                        where: { id: existingStockItem.id },
+                        data: {
+                            quantity: quantityRecord.countedQuantity,
+                            reserved: Math.min(existingStockItem.reserved, quantityRecord.countedQuantity),
+                        },
+                    });
+                } else if (quantityRecord.countedQuantity > 0) {
+                    await tx.stockItem.create({
+                        data: {
+                            productId: quantityRecord.productId,
+                            warehouseId: session.warehouseId,
+                            quantity: quantityRecord.countedQuantity,
+                            reserved: 0,
+                            minQuantity: 0,
+                        },
+                    });
+                }
+            }
+
             await tx.inventorySession.update({
                 where: { id },
                 data: {
@@ -286,50 +382,84 @@ export class InventoryService {
             });
         });
 
-        const refreshed = await this.findOne(id);
+        const refreshed: any = await this.findOne(id);
+        const quantityAdjusted = quantityRecords.filter(
+            (record: any) => record.expectedQuantity !== record.countedQuantity,
+        ).length;
+
         return {
             session: refreshed,
-            summary: this.buildSummary(refreshed.records),
+            summary: this.buildSummary(refreshed.records, refreshed.quantityRecords || []),
             adjustments: {
                 missingAdjusted: missingRecords.length,
                 extraAdjusted: extraRecords.length,
+                quantityAdjusted,
             },
         };
     }
 
-    private buildSummary(records: any[]) {
-        const expectedCount = records.filter(r => r.status === InventoryStatus.EXPECTED).length;
-        const scannedCount = records.filter(r => r.status === InventoryStatus.SCANNED).length;
-        const extraCount = records.filter(r => r.status === InventoryStatus.EXTRA).length;
-        const totalPlan = expectedCount + scannedCount;
-        const totalFact = scannedCount + extraCount;
-        const missingCount = expectedCount;
+    private buildSummary(records: any[], quantityRecords: any[] = []) {
+        const expectedCount = records.filter((record) => record.status === InventoryStatus.EXPECTED).length;
+        const scannedCount = records.filter((record) => record.status === InventoryStatus.SCANNED).length;
+        const extraCount = records.filter((record) => record.status === InventoryStatus.EXTRA).length;
+
+        const quantityPlan = quantityRecords.reduce(
+            (sum, record) => sum + Number(record.expectedQuantity || 0),
+            0,
+        );
+        const quantityFact = quantityRecords.reduce(
+            (sum, record) => sum + Number(record.countedQuantity || 0),
+            0,
+        );
+        const quantityMissing = quantityRecords.reduce(
+            (sum, record) => sum + Math.max(Number(record.expectedQuantity || 0) - Number(record.countedQuantity || 0), 0),
+            0,
+        );
+        const quantityExtra = quantityRecords.reduce(
+            (sum, record) => sum + Math.max(Number(record.countedQuantity || 0) - Number(record.expectedQuantity || 0), 0),
+            0,
+        );
+
+        const totalPlan = expectedCount + scannedCount + quantityPlan;
+        const totalFact = scannedCount + extraCount + quantityFact;
+        const missingCount = expectedCount + quantityMissing;
+        const totalExtra = extraCount + quantityExtra;
 
         return {
             plan: totalPlan,
             fact: totalFact,
             missing: missingCount,
-            extra: extraCount,
-            scanned: scannedCount,
+            extra: totalExtra,
+            scanned: scannedCount + quantityFact,
         };
     }
 
     async getStats(id: string, search?: string) {
-        const session = await this.findOne(id);
+        const session: any = await this.findOne(id);
         const normalizedSearch = search?.trim().toLowerCase();
+
         const filteredRecords = normalizedSearch
-            ? session.records.filter((record) =>
+            ? session.records.filter((record: any) =>
                 record.asset.serialNumber.toLowerCase().includes(normalizedSearch) ||
                 record.asset.product.name.toLowerCase().includes(normalizedSearch) ||
+                record.asset.product.sku?.toLowerCase().includes(normalizedSearch) ||
                 record.asset.product.category?.name?.toLowerCase().includes(normalizedSearch),
             )
             : session.records;
 
-        const summary = this.buildSummary(session.records);
+        const filteredQuantityRecords = normalizedSearch
+            ? session.quantityRecords.filter((record: any) =>
+                record.product.name.toLowerCase().includes(normalizedSearch) ||
+                record.product.sku?.toLowerCase().includes(normalizedSearch) ||
+                record.product.category?.name?.toLowerCase().includes(normalizedSearch),
+            )
+            : session.quantityRecords;
+
+        const summary = this.buildSummary(session.records, session.quantityRecords || []);
 
         const sortedScanned = session.records
-            .filter(r => r.scannedAt)
-            .sort((a, b) => new Date(b.scannedAt!).getTime() - new Date(a.scannedAt!).getTime());
+            .filter((record: any) => record.scannedAt)
+            .sort((a: any, b: any) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
 
         const lastItem = sortedScanned[0] ? sortedScanned[0] : null;
 
@@ -339,7 +469,8 @@ export class InventoryService {
             session: {
                 ...session,
                 records: filteredRecords,
-            }
+                quantityRecords: filteredQuantityRecords,
+            },
         };
     }
 }

@@ -29,11 +29,13 @@ export class ReceivingController {
             warehouseId: string;
             invoiceNumber?: string;
             supplier?: string;
+            type?: string;
             items: {
                 name: string;
                 sku?: string;
                 expectedQuantity: number;
                 productId?: string;
+                linkedAssetId?: string;
             }[];
         },
         @Request() req: any,

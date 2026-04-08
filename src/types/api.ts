@@ -90,11 +90,12 @@ export interface AssetHistory {
 export interface Asset {
     id: string;
     serialNumber: string;
+    isUnidentified?: boolean;
     productId: string;
     storeId?: string;
     warehouseId?: string;
     condition: 'WORKING' | 'NEEDS_REPAIR' | 'DECOMMISSIONED' | 'IN_REPAIR' | 'UNKNOWN';
-    processStatus: 'AVAILABLE' | 'RESERVED' | 'IN_TRANSIT' | 'DELIVERED' | 'INSTALLED';
+    processStatus: 'AVAILABLE' | 'RESERVED' | 'IN_TRANSIT' | 'LOST_IN_TRANSIT' | 'DELIVERED' | 'INSTALLED' | 'UNSERVICED';
     createdAt: string;
     notes?: string;
     history?: AssetHistory[]; // New field for history/comments
@@ -318,8 +319,22 @@ export interface Delivery {
             status?: string;
         };
         items?: any[];
+        lines?: {
+            id: string;
+            originalName?: string;
+            sku?: string | null;
+            scannedQuantity: number;
+            expectedQuantity?: number;
+            product?: Product;
+            scans?: {
+                id: string;
+                code?: string | null;
+                quantity: number;
+            }[];
+        }[];
         _count?: {
-            items: number;
+            items?: number;
+            lines?: number;
         };
     };
     events?: DeliveryEvent[];
@@ -353,6 +368,7 @@ export interface StockItem {
         id?: string;
         name: string;
     };
+    source?: 'STOCK_ITEM' | 'ASSET_AGGREGATE' | 'MIXED';
 }
 
 export interface Warehouse {
@@ -363,6 +379,8 @@ export interface Warehouse {
     phone?: string;
     email?: string;
     isActive: boolean;
+    initialInventoryCompletedAt?: string | null;
+    stockItems?: StockItem[];
 }
 
 export interface WarehouseDetails extends Warehouse {
@@ -385,6 +403,50 @@ export interface WarehouseDetails extends Warehouse {
         items: string[];
     }[];
     newStores: Store[];
+}
+
+export interface InitialInventoryScan {
+    id: string;
+    code: string;
+    linkedAssetId?: string | null;
+    conflictType?: 'STORE_ASSET' | 'OTHER_WAREHOUSE' | 'PROCESS_CONFLICT' | null;
+    sourceWarehouseId?: string | null;
+    sourceStoreId?: string | null;
+    sourceProcessStatus?: string | null;
+    requiresReview?: boolean;
+    reviewedAt?: string | null;
+    createdAt: string;
+}
+
+export interface InitialInventoryEntry {
+    id: string;
+    sessionId: string;
+    productId: string;
+    quantity: number;
+    createdAt: string;
+    updatedAt: string;
+    product: Product;
+    scans: InitialInventoryScan[];
+}
+
+export interface InitialInventorySession {
+    id: string;
+    warehouseId: string;
+    createdById: string;
+    status: 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+    createdAt: string;
+    updatedAt: string;
+    completedAt?: string | null;
+    warehouse: {
+        id: string;
+        name: string;
+        initialInventoryCompletedAt?: string | null;
+    };
+    createdBy: {
+        id: string;
+        name: string;
+    };
+    entries: InitialInventoryEntry[];
 }
 
 export interface PingStatusResponse {
@@ -414,6 +476,7 @@ export type ReceivingStatus = 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED';
 export interface ReceivingItem {
     id: string;
     sessionId: string;
+    linkedAssetId?: string;
     name: string;
     sku?: string;
     expectedQuantity: number;
@@ -426,6 +489,14 @@ export interface ReceivingItem {
         name: string;
         sku: string;
     };
+    linkedAsset?: {
+        id: string;
+        serialNumber: string;
+        isUnidentified: boolean;
+        productId: string;
+        condition: string;
+        processStatus: string;
+    };
 }
 
 export interface ReceivingSession {
@@ -434,6 +505,8 @@ export interface ReceivingSession {
     status: ReceivingStatus;
     invoiceNumber?: string;
     supplier?: string;
+    hasDiscrepancy?: boolean;
+    discrepancyDetails?: string | null;
     createdById: string;
     createdAt: string;
     updatedAt: string;

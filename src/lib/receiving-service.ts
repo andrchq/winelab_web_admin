@@ -8,6 +8,7 @@ export interface ReceivingItem {
     expectedQuantity: number;
     scannedQuantity: number;
     productId?: string;
+    linkedAssetId?: string;
     scans?: {
         id: string;
         timestamp: number | string;
@@ -24,6 +25,14 @@ export interface ReceivingItem {
             name: string;
         };
     };
+    linkedAsset?: {
+        id: string;
+        serialNumber: string;
+        isUnidentified: boolean;
+        productId: string;
+        condition: string;
+        processStatus: string;
+    };
 }
 
 export interface ReceivingSession {
@@ -35,7 +44,9 @@ export interface ReceivingSession {
     completedAt?: string;
     invoiceNumber?: string;
     supplier?: string;
-    type?: 'manual' | 'file';
+    type?: 'manual' | 'file' | 'RETURN';
+    hasDiscrepancy?: boolean;
+    discrepancyDetails?: string | null;
     warehouse?: { id: string; name: string };
     createdBy?: { id: string; name: string };
     completedBy?: { id: string; name: string };

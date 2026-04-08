@@ -174,7 +174,7 @@ export function EditAssetDialog({ open, onOpenChange, asset, onSuccess }: EditAs
                 <DialogHeader>
                     <DialogTitle>Редактирование оборудования</DialogTitle>
                     <DialogDescription>
-                        {asset.product?.name} ({asset.serialNumber})
+                        {asset.product?.name} ({asset.isUnidentified ? "ШК не привязан" : asset.serialNumber})
                     </DialogDescription>
                 </DialogHeader>
 
@@ -183,7 +183,7 @@ export function EditAssetDialog({ open, onOpenChange, asset, onSuccess }: EditAs
                     <div className="space-y-2">
                         <Label>Серийный номер</Label>
                         <div className="p-3 rounded-md bg-muted/50 font-mono text-sm border">
-                            {asset.serialNumber}
+                            {asset.isUnidentified ? "ШК не привязан" : asset.serialNumber}
                         </div>
                     </div>
 

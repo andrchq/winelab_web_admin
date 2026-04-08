@@ -43,10 +43,10 @@ export class ProductsService {
                 },
                 assets: {
                     where: {
-                        NOT: {
-                            condition: 'DECOMMISSIONED',
-                            processStatus: { in: ['INSTALLED', 'DELIVERED'] }
-                        }
+                        condition: { not: 'DECOMMISSIONED' },
+                        storeId: null,
+                        warehouseId: { not: null },
+                        processStatus: { in: ['AVAILABLE', 'RESERVED'] as any },
                     },
                     select: {
                         processStatus: true,

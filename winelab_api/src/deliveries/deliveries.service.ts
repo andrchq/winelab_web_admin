@@ -43,6 +43,24 @@ export class DeliveriesService {
         }
     }
 
+    private normalizeScanCode(code?: string | null) {
+        if (!code) {
+            return null;
+        }
+
+        return code.replace(/^BOX:\s*/i, '').trim();
+    }
+
+    private extractClaimIdFromCallback(payload: any): string | null {
+        return (
+            payload?.claim_id ||
+            payload?.claimId ||
+            payload?.claim?.id ||
+            payload?.id ||
+            null
+        );
+    }
+
     private async syncRequestStatusForDelivery(
         tx: DeliveryTx,
         shipmentId: string,
@@ -97,6 +115,16 @@ export class DeliveriesService {
             where: { id: shipmentId },
             include: {
                 items: true,
+                lines: {
+                    include: {
+                        product: {
+                            select: {
+                                accountingType: true,
+                            },
+                        },
+                        scans: true,
+                    },
+                },
             },
         });
 
@@ -104,10 +132,28 @@ export class DeliveriesService {
             throw new NotFoundException('Отгрузка не найдена');
         }
 
-        const assetIds = shipment.items.map((item) => item.assetId);
-        if (assetIds.length > 0) {
+        const assetIds = new Set(shipment.items.map((item) => item.assetId));
+        const serializedCodes = shipment.lines
+            .filter((line) => line.product?.accountingType !== 'QUANTITY')
+            .flatMap((line) => line.scans.map((scan) => this.normalizeScanCode(scan.code)))
+            .filter((code): code is string => Boolean(code));
+
+        if (serializedCodes.length > 0) {
+            const serializedAssets = await tx.asset.findMany({
+                where: {
+                    serialNumber: {
+                        in: serializedCodes,
+                    },
+                },
+            });
+
+            serializedAssets.forEach((asset) => assetIds.add(asset.id));
+        }
+
+        const uniqueAssetIds = Array.from(assetIds);
+        if (uniqueAssetIds.length > 0) {
             await tx.asset.updateMany({
-                where: { id: { in: assetIds } },
+                where: { id: { in: uniqueAssetIds } },
                 data: {
                     processStatus: AssetProcess.DELIVERED,
                     storeId,
@@ -162,8 +208,15 @@ export class DeliveriesService {
                 store: { select: { id: true, name: true, address: true } },
                 shipment: {
                     include: {
-                        _count: { select: { items: true } },
+                        _count: { select: { items: true, lines: true } },
                         request: { select: { id: true, status: true } },
+                        lines: {
+                            select: {
+                                id: true,
+                                scannedQuantity: true,
+                                expectedQuantity: true,
+                            },
+                        },
                     },
                 },
             },
@@ -180,6 +233,16 @@ export class DeliveriesService {
                     include: {
                         request: true,
                         items: { include: { asset: { include: { product: true } } } },
+                        lines: {
+                            include: {
+                                product: {
+                                    include: {
+                                        category: true,
+                                    },
+                                },
+                                scans: true,
+                            },
+                        },
                     },
                 },
                 events: { orderBy: { timestamp: 'asc' } },
@@ -296,6 +359,42 @@ export class DeliveriesService {
 
         this.eventsGateway.emitDeliveryUpdate(updatedDelivery);
         return this.findById(id);
+    }
+
+    async syncYandexCallback(payload: any) {
+        const claimId = this.extractClaimIdFromCallback(payload);
+        if (!claimId) {
+            return {
+                accepted: false,
+                reason: 'claim_id not found',
+            };
+        }
+
+        const delivery = await this.prisma.delivery.findFirst({
+            where: {
+                provider: 'YANDEX_DELIVERY',
+                externalId: claimId,
+            },
+            select: {
+                id: true,
+            },
+        });
+
+        if (!delivery) {
+            return {
+                accepted: false,
+                reason: 'delivery not found',
+                claimId,
+            };
+        }
+
+        await this.syncProviderState(delivery.id);
+
+        return {
+            accepted: true,
+            claimId,
+            deliveryId: delivery.id,
+        };
     }
 
     async updateStatus(id: string, status: DeliveryStatus, courierName?: string, courierPhone?: string) {

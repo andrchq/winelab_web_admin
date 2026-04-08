@@ -55,6 +55,31 @@ export default function DeliveryDetailPage() {
     const [isSyncing, setIsSyncing] = useState(false);
     const canUpdateDelivery = hasPermission([SystemPermission.DELIVERY_UPDATE]);
     const isYandexDelivery = delivery?.provider === "YANDEX_DELIVERY";
+    const shipmentLineItems = delivery?.shipment?.lines
+        ?.filter((line) => Number(line.scannedQuantity || 0) > 0)
+        .flatMap((line) => {
+            const serializedScans = (line.scans || [])
+                .filter((scan) => Number(scan.quantity || 0) > 0)
+                .map((scan) => ({
+                    id: `${line.id}-${scan.id}`,
+                    name: line.product?.name || line.originalName || "Оборудование",
+                    serialNumber: scan.code || "Без ШК",
+                    quantity: scan.quantity || 1,
+                }));
+
+            if (serializedScans.length > 0) {
+                return serializedScans;
+            }
+
+            return [
+                {
+                    id: line.id,
+                    name: line.product?.name || line.originalName || "Оборудование",
+                    serialNumber: line.sku || "Количественная позиция",
+                    quantity: Number(line.scannedQuantity || 0),
+                },
+            ];
+        }) || [];
 
     const formatDate = (dateStr: string) => {
         return new Date(dateStr).toLocaleString("ru-RU", {
@@ -361,26 +386,24 @@ export default function DeliveryDetailPage() {
                             </CardContent>
                         </Card>
 
-                        {delivery.shipment?.items && delivery.shipment.items.length > 0 && (
+                        {shipmentLineItems.length > 0 && (
                             <Card>
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2">
                                         <Package className="h-5 w-5 text-primary" />
-                                        Содержимое ({delivery.shipment.items.length})
+                                        Содержимое ({shipmentLineItems.length})
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-2">
-                                        {delivery.shipment.items.map((item: any) => (
-                                            <Link key={item.id} href={`/assets/${item.asset?.id}`}>
-                                                <div className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 p-3 transition-colors hover:bg-accent/30">
-                                                    <div>
-                                                        <p className="font-medium">{item.asset?.product?.name}</p>
-                                                        <p className="font-mono text-sm text-muted-foreground">{item.asset?.serialNumber}</p>
-                                                    </div>
-                                                    <Badge variant="secondary">1 шт.</Badge>
+                                        {shipmentLineItems.map((item) => (
+                                            <div key={item.id} className="flex items-center justify-between rounded-lg border border-border/50 p-3">
+                                                <div>
+                                                    <p className="font-medium">{item.name}</p>
+                                                    <p className="font-mono text-sm text-muted-foreground">{item.serialNumber}</p>
                                                 </div>
-                                            </Link>
+                                                <Badge variant="secondary">{item.quantity} шт.</Badge>
+                                            </div>
                                         ))}
                                     </div>
                                 </CardContent>

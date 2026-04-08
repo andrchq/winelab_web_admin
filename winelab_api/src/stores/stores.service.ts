@@ -10,6 +10,10 @@ const execAsync = promisify(exec);
 export class StoresService {
     constructor(private prisma: PrismaService) { }
 
+    private createUnidentifiedSerial() {
+        return `UNBOUND-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    }
+
     async findAll(filters: { search?: string; status?: any; manager?: string } = {}) {
         const { search, status, manager } = filters;
         const where: any = { isActive: true };
@@ -340,9 +344,9 @@ export class StoresService {
         }
     }
     async addEquipment(storeId: string, data: {
-        equipment: Array<{ category: string; stockItemId: string; comment: string }>;
+        equipment: Array<{ category: string; stockItemId?: string; productId?: string; comment: string }>;
         skipInventory: boolean;
-        warehouseId: string;
+        warehouseId?: string;
     }) {
         const { equipment, skipInventory, warehouseId } = data;
         const store = await this.findById(storeId);
@@ -350,17 +354,44 @@ export class StoresService {
         const results = [];
 
         for (const item of equipment) {
-            // Find stock item to get product info
-            const stockItem = await this.prisma.stockItem.findUnique({
-                where: { id: item.stockItemId },
-                include: { product: true }
-            });
+            let stockItem: any = null;
+            let productId: string | null = null;
 
-            if (!stockItem) continue;
+            if (skipInventory) {
+                if (!item.productId) {
+                    throw new BadRequestException('Для режима "Без учета" нужно выбрать модель оборудования');
+                }
+
+                const product = await this.prisma.product.findUnique({
+                    where: { id: item.productId },
+                });
+
+                if (!product) {
+                    throw new NotFoundException('Выбранная модель оборудования не найдена');
+                }
+
+                productId = product.id;
+            } else {
+                if (!item.stockItemId) {
+                    throw new BadRequestException('Для складского добавления нужно выбрать позицию остатка');
+                }
+
+                // Find stock item to get product info
+                stockItem = await this.prisma.stockItem.findUnique({
+                    where: { id: item.stockItemId },
+                    include: { product: true }
+                });
+
+                if (!stockItem) continue;
+
+                productId = stockItem.productId;
+            }
 
             // 1. If not skipInventory, decrement stock
-            if (!skipInventory) {
-                if (stockItem.quantity <= 0) {
+            if (!skipInventory && stockItem) {
+                const availableQuantity = Number(stockItem.quantity || 0) - Number(stockItem.reserved || 0);
+
+                if (availableQuantity <= 0) {
                     throw new BadRequestException(`На складе недостаточно товара: ${stockItem.product.name}`);
                 }
 
@@ -370,38 +401,57 @@ export class StoresService {
                 });
             }
 
-            // 2. Try to find an available physical asset at the warehouse
-            let asset = await this.prisma.asset.findFirst({
-                where: {
-                    productId: stockItem.productId,
-                    warehouseId: warehouseId,
-                    processStatus: AssetProcess.AVAILABLE
-                }
-            });
+            let asset;
 
-            if (asset) {
-                // Move existing asset
-                asset = await this.prisma.asset.update({
-                    where: { id: asset.id },
-                    data: {
-                        storeId: store.id,
-                        warehouseId: null,
-                        processStatus: AssetProcess.INSTALLED,
-                        notes: item.comment || asset.notes
-                    }
-                });
-            } else {
-                // Create a new "virtual" asset if no physical ones are found
+            if (skipInventory) {
+                // "Без учета" means we install legacy equipment without binding a real barcode yet.
                 asset = await this.prisma.asset.create({
                     data: {
-                        serialNumber: `SN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                        productId: stockItem.productId,
+                        serialNumber: this.createUnidentifiedSerial(),
+                        isUnidentified: true,
+                        productId: productId!,
                         storeId: store.id,
                         processStatus: AssetProcess.INSTALLED,
                         notes: item.comment,
                         condition: 'WORKING'
                     }
                 });
+            } else {
+                // 2. Try to find an available physical asset at the warehouse
+                asset = await this.prisma.asset.findFirst({
+                    where: {
+                        productId: productId!,
+                        warehouseId: warehouseId,
+                        processStatus: AssetProcess.AVAILABLE
+                    }
+                });
+
+                if (asset) {
+                    // Move existing asset
+                    asset = await this.prisma.asset.update({
+                        where: { id: asset.id },
+                        data: {
+                            storeId: store.id,
+                            warehouseId: null,
+                            processStatus: AssetProcess.INSTALLED,
+                            isUnidentified: false,
+                            notes: item.comment || asset.notes
+                        }
+                    });
+                } else {
+                    // Create a placeholder asset when stock exists, but there is no bound asset record yet.
+                    asset = await this.prisma.asset.create({
+                        data: {
+                            serialNumber: this.createUnidentifiedSerial(),
+                            isUnidentified: true,
+                            productId: productId!,
+                            storeId: store.id,
+                            processStatus: AssetProcess.INSTALLED,
+                            notes: item.comment,
+                            condition: 'WORKING'
+                        }
+                    });
+                }
             }
 
             // 3. Add history

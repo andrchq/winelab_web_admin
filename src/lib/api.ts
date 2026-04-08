@@ -113,8 +113,23 @@ export const inventoryApi = {
     getOne: (id: string, search?: string) => api.get<any>(`/inventory/${id}${search ? `?search=${search}` : ''}`),
     start: (warehouseId: string) => api.post<any>('/inventory/start', { warehouseId }),
     scan: (id: string, barcode: string) => api.post<any>(`/inventory/${id}/scan`, { barcode }),
+    setQuantityCount: (id: string, recordId: string, countedQuantity: number) =>
+        api.patch<any>(`/inventory/${id}/quantity/${recordId}`, { countedQuantity }),
     finish: (id: string) => api.post<any>(`/inventory/${id}/finish`),
     applyAdjustments: (id: string) => api.post<any>(`/inventory/${id}/apply-adjustments`),
+};
+
+export const initialInventoryApi = {
+    start: (warehouseId: string) => api.post<any>('/inventory/initial/start', { warehouseId }),
+    getOne: (id: string) => api.get<any>(`/inventory/initial/${id}`),
+    createEntry: (id: string, productId: string) => api.post<any>(`/inventory/initial/${id}/entries`, { productId }),
+    addScan: (id: string, entryId: string, code: string) => api.post<any>(`/inventory/initial/${id}/entries/${entryId}/scans`, { code }),
+    resolveScanConflict: (id: string, entryId: string, scanId: string) =>
+        api.patch<any>(`/inventory/initial/${id}/entries/${entryId}/scans/${scanId}/review`),
+    deleteScan: (id: string, entryId: string, scanId: string) => api.delete<any>(`/inventory/initial/${id}/entries/${entryId}/scans/${scanId}`),
+    setQuantity: (id: string, entryId: string, quantity: number) => api.patch<any>(`/inventory/initial/${id}/entries/${entryId}/quantity`, { quantity }),
+    deleteEntry: (id: string, entryId: string) => api.delete<any>(`/inventory/initial/${id}/entries/${entryId}`),
+    apply: (id: string) => api.post<any>(`/inventory/initial/${id}/apply`),
 };
 
 export const requestApi = {

@@ -4,9 +4,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Warehouse, MapPin, Trash2, Building2 } from "lucide-react";
+import { Warehouse, MapPin, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
 import { useWarehouses } from "@/lib/hooks";
 import { AddWarehouseDialog } from "@/components/warehouses/add-warehouse-dialog";
@@ -37,6 +38,15 @@ export default function WarehousesPage() {
             toast.error("Ошибка при удалении");
             console.error(error);
         }
+    };
+
+    const formatDateOnly = (dateString?: string | null) => {
+        if (!dateString) return "";
+        return new Date(dateString).toLocaleDateString("ru-RU", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+        });
     };
 
     return (
@@ -113,6 +123,18 @@ export default function WarehousesPage() {
                                     </div>
                                 </CardHeader>
                                 <CardContent>
+                                    <div className="mb-4 flex items-center justify-between gap-2">
+                                        {warehouse.initialInventoryCompletedAt ? (
+                                            <>
+                                                <Badge variant="success">Инициализирован</Badge>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {formatDateOnly(warehouse.initialInventoryCompletedAt)}
+                                                </span>
+                                            </>
+                                        ) : (
+                                            <Badge variant="secondary">Требует первичной инвентаризации</Badge>
+                                        )}
+                                    </div>
                                     <div className="grid grid-cols-2 gap-4 pt-2">
                                         <div className="bg-muted/50 rounded-lg p-3">
                                             <div className="text-sm text-muted-foreground mb-1">Позиций</div>

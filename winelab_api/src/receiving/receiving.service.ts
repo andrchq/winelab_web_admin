@@ -1,16 +1,19 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+
 import { EventsGateway } from '../events/events.gateway';
+import { PrismaService } from '../prisma/prisma.service';
 
 interface CreateSessionDto {
     warehouseId: string;
     invoiceNumber?: string;
     supplier?: string;
+    type?: string;
     items: {
         name: string;
         sku?: string;
         expectedQuantity: number;
         productId?: string;
+        linkedAssetId?: string;
     }[];
 }
 
@@ -38,6 +41,46 @@ export class ReceivingService {
     private normalizeScanCode(code?: string | null) {
         if (!code) return null;
         return code.replace(/^BOX:\s*/i, '').trim().toLowerCase();
+    }
+
+    private cleanScanCode(code: string) {
+        return code.replace(/^BOX:\s*/i, '').trim();
+    }
+
+    private getReceivingItemInclude() {
+        return {
+            linkedAsset: {
+                select: {
+                    id: true,
+                    serialNumber: true,
+                    isUnidentified: true,
+                    productId: true,
+                    condition: true,
+                    processStatus: true,
+                },
+            },
+            product: {
+                select: {
+                    id: true,
+                    name: true,
+                    sku: true,
+                    accountingType: true,
+                    category: { select: { code: true, name: true } },
+                },
+            },
+            scans: { orderBy: { timestamp: 'desc' as const } },
+        };
+    }
+
+    private getReceivingSessionInclude() {
+        return {
+            warehouse: { select: { id: true, name: true } },
+            createdBy: { select: { id: true, name: true } },
+            completedBy: { select: { id: true, name: true } },
+            items: {
+                include: this.getReceivingItemInclude(),
+            },
+        };
     }
 
     private async findAssetBySerial(serialNumber: string) {
@@ -76,27 +119,22 @@ export class ReceivingService {
         });
     }
 
+    private validateLinkedShipmentScan(linkedShipment: Awaited<ReturnType<ReceivingService['findLinkedShipment']>>, productId: string | undefined, normalizedCode: string) {
+        if (!linkedShipment) return;
+
+        const isPartOfShipment = linkedShipment.lines.some((line) =>
+            line.productId === productId &&
+            line.scans.some((scan) => this.normalizeScanCode(scan.code) === normalizedCode),
+        );
+
+        if (!isPartOfShipment) {
+            throw new BadRequestException('Этот ШК не был отправлен в этой отгрузке');
+        }
+    }
+
     async findAll() {
         return this.prisma.receivingSession.findMany({
-            include: {
-                warehouse: { select: { id: true, name: true } },
-                createdBy: { select: { id: true, name: true } },
-                completedBy: { select: { id: true, name: true } },
-                items: {
-                    include: {
-                        product: {
-                            select: {
-                                id: true,
-                                name: true,
-                                sku: true,
-                                accountingType: true,
-                                category: { select: { code: true, name: true } },
-                            },
-                        },
-                        scans: { orderBy: { timestamp: 'desc' } },
-                    },
-                },
-            },
+            include: this.getReceivingSessionInclude(),
             orderBy: { createdAt: 'desc' },
         });
     }
@@ -104,25 +142,7 @@ export class ReceivingService {
     async findOne(id: string) {
         const session = await this.prisma.receivingSession.findUnique({
             where: { id },
-            include: {
-                warehouse: { select: { id: true, name: true } },
-                createdBy: { select: { id: true, name: true } },
-                completedBy: { select: { id: true, name: true } },
-                items: {
-                    include: {
-                        product: {
-                            select: {
-                                id: true,
-                                name: true,
-                                sku: true,
-                                accountingType: true,
-                                category: { select: { code: true, name: true } },
-                            },
-                        },
-                        scans: { orderBy: { timestamp: 'desc' } },
-                    },
-                },
-            },
+            include: this.getReceivingSessionInclude(),
         });
 
         if (!session) {
@@ -132,7 +152,7 @@ export class ReceivingService {
         return session;
     }
 
-    async create(data: CreateSessionDto & { type?: string }, userId: string) {
+    async create(data: CreateSessionDto, userId: string) {
         const session = await this.prisma.receivingSession.create({
             data: {
                 warehouseId: data.warehouseId,
@@ -146,28 +166,12 @@ export class ReceivingService {
                         sku: item.sku,
                         expectedQuantity: item.expectedQuantity,
                         productId: item.productId,
+                        linkedAssetId: item.linkedAssetId,
                         scannedQuantity: 0,
                     })),
                 },
             },
-            include: {
-                warehouse: { select: { id: true, name: true } },
-                createdBy: { select: { id: true, name: true } },
-                items: {
-                    include: {
-                        product: {
-                            select: {
-                                id: true,
-                                name: true,
-                                sku: true,
-                                accountingType: true,
-                                category: { select: { code: true, name: true } },
-                            },
-                        },
-                        scans: { orderBy: { timestamp: 'desc' } },
-                    },
-                },
-            },
+            include: this.getReceivingSessionInclude(),
         });
 
         this.eventsGateway.server.emit('receiving_update', session);
@@ -190,6 +194,14 @@ export class ReceivingService {
         const item = await this.prisma.receivingItem.findFirst({
             where: { id: itemId, sessionId },
             include: {
+                linkedAsset: {
+                    select: {
+                        id: true,
+                        serialNumber: true,
+                        isUnidentified: true,
+                        productId: true,
+                    },
+                },
                 product: {
                     select: {
                         id: true,
@@ -210,6 +222,7 @@ export class ReceivingService {
 
         const linkedShipment = await this.findLinkedShipment(sessionId);
         const isSerialized = item.product?.accountingType !== 'QUANTITY';
+        const canBindUnidentifiedAsset = Boolean(item.linkedAssetId && item.linkedAsset?.isUnidentified);
         let storedCode = data.code;
 
         if (data.code) {
@@ -246,31 +259,32 @@ export class ReceivingService {
                 throw new BadRequestException('Пустой ШК нельзя принять');
             }
 
-            const asset = await this.findAssetBySerial(normalizedCode);
-            if (!asset) {
-                throw new BadRequestException('Этот ШК не найден в системе. Новые ШК можно добавлять только через инвентаризацию');
-            }
-
-            if (item.productId && asset.productId !== item.productId) {
-                throw new BadRequestException(`Этот ШК относится к модели "${asset.product.name}", а не к "${item.name}"`);
-            }
-
-            if (linkedShipment) {
-                const isPartOfShipment = linkedShipment.lines.some((line) =>
-                    line.productId === item.productId &&
-                    line.scans.some((scan) => this.normalizeScanCode(scan.code) === normalizedCode),
-                );
-
-                if (!isPartOfShipment) {
-                    throw new BadRequestException('Этот ШК не был отправлен в этой отгрузке');
+            const existingAsset = await this.findAssetBySerial(normalizedCode);
+            if (!existingAsset) {
+                if (!canBindUnidentifiedAsset) {
+                    throw new BadRequestException('Этот ШК не найден в системе. Новые ШК можно добавлять только через инвентаризацию или привязку legacy-оборудования в приемке');
                 }
 
-                if (asset.processStatus !== 'IN_TRANSIT') {
-                    throw new BadRequestException('Этот товар не находится в статусе перемещения');
+                storedCode = this.cleanScanCode(data.code);
+            } else {
+                if (canBindUnidentifiedAsset && existingAsset.id !== item.linkedAssetId) {
+                    throw new BadRequestException('Этот ШК уже принадлежит другому оборудованию в системе');
                 }
-            }
 
-            storedCode = asset.serialNumber;
+                if (item.productId && existingAsset.productId !== item.productId) {
+                    throw new BadRequestException(`Этот ШК относится к модели "${existingAsset.product.name}", а не к "${item.name}"`);
+                }
+
+                if (linkedShipment && session.type !== 'RETURN') {
+                    this.validateLinkedShipmentScan(linkedShipment, item.productId ?? undefined, normalizedCode);
+
+                    if (existingAsset.processStatus !== 'IN_TRANSIT') {
+                        throw new BadRequestException('Этот товар не находится в статусе перемещения');
+                    }
+                }
+
+                storedCode = existingAsset.serialNumber;
+            }
         } else if (linkedShipment) {
             const existingScans = await this.prisma.receivingScan.findMany({
                 where: { receivingItemId: itemId },
@@ -384,6 +398,9 @@ export class ReceivingService {
         }
 
         const linkedShipment = await this.findLinkedShipment(sessionId);
+        const missingReturnItems = session.type === 'RETURN'
+            ? session.items.filter((item) => item.linkedAssetId && item.expectedQuantity > 0 && item.scannedQuantity === 0)
+            : [];
 
         return this.prisma.$transaction(async (tx) => {
             const results = [];
@@ -394,7 +411,10 @@ export class ReceivingService {
 
                 const itemWithScans = await tx.receivingItem.findUnique({
                     where: { id: item.id },
-                    include: { scans: true },
+                    include: {
+                        scans: true,
+                        linkedAsset: true,
+                    },
                 });
 
                 const product = await tx.product.findUnique({
@@ -408,6 +428,110 @@ export class ReceivingService {
                     for (const scan of itemWithScans.scans) {
                         if (!scan.code) {
                             throw new BadRequestException(`Для "${item.name}" не хватает серийного номера`);
+                        }
+
+                        if (itemWithScans.linkedAssetId) {
+                            const linkedAsset = await tx.asset.findUnique({
+                                where: { id: itemWithScans.linkedAssetId },
+                            });
+
+                            if (!linkedAsset) {
+                                throw new NotFoundException('Связанное оборудование не найдено');
+                            }
+
+                            if (linkedAsset.productId !== item.productId) {
+                                throw new BadRequestException(`ШК "${scan.code}" относится к другой модели`);
+                            }
+
+                            if (linkedAsset.isUnidentified) {
+                                const duplicateAsset = await tx.asset.findFirst({
+                                    where: {
+                                        serialNumber: {
+                                            equals: scan.code,
+                                            mode: 'insensitive',
+                                        },
+                                    },
+                                });
+
+                                if (duplicateAsset && duplicateAsset.id !== linkedAsset.id) {
+                                    throw new BadRequestException('Этот ШК уже привязан к другому оборудованию');
+                                }
+
+                                await tx.asset.update({
+                                    where: { id: linkedAsset.id },
+                                    data: {
+                                        serialNumber: scan.code,
+                                        isUnidentified: false,
+                                        warehouseId: session.warehouseId,
+                                        storeId: null,
+                                        processStatus: session.type === 'RETURN' ? 'UNSERVICED' : 'AVAILABLE',
+                                        updatedAt: new Date(),
+                                    },
+                                });
+
+                                await tx.assetHistory.create({
+                                    data: {
+                                        assetId: linkedAsset.id,
+                                        action: 'ASSET_IDENTIFIED',
+                                        location: `Warehouse: ${session.warehouseId}`,
+                                        details: `Привязка реального ШК "${scan.code}" в приемке ${session.id}`,
+                                        userId: userId || session.createdById,
+                                    },
+                                });
+
+                                await tx.assetHistory.create({
+                                    data: {
+                                        assetId: linkedAsset.id,
+                                        action: session.type === 'RETURN' ? 'RECEIVED_RETURN' : 'RECEIVED_EXISTING',
+                                        location: `Warehouse: ${session.warehouseId}`,
+                                        details: session.type === 'RETURN'
+                                            ? `Возврат на склад по приемке ${session.id}`
+                                            : `Принято по приемке ${session.id}`,
+                                        userId: userId || session.createdById,
+                                    },
+                                });
+
+                                updatedAssetsCount++;
+                                continue;
+                            }
+
+                            const existingAsset = await tx.asset.findFirst({
+                                where: {
+                                    serialNumber: {
+                                        equals: scan.code,
+                                        mode: 'insensitive',
+                                    },
+                                },
+                            });
+
+                            if (!existingAsset || existingAsset.id !== linkedAsset.id) {
+                                throw new BadRequestException('Отсканированный ШК не совпадает с привязанным оборудованием');
+                            }
+
+                            await tx.asset.update({
+                                where: { id: linkedAsset.id },
+                                data: {
+                                    warehouseId: session.warehouseId,
+                                    storeId: null,
+                                    processStatus: session.type === 'RETURN' ? 'UNSERVICED' : 'AVAILABLE',
+                                    updatedAt: new Date(),
+                                },
+                            });
+
+                            await tx.assetHistory.create({
+                                data: {
+                                    assetId: linkedAsset.id,
+                                    action: session.type === 'RETURN' ? 'RECEIVED_RETURN' : 'RECEIVED_EXISTING',
+                                    location: `Warehouse: ${session.warehouseId}`,
+                                    details: session.type === 'RETURN'
+                                        ? `Возврат на склад по приемке ${session.id}`
+                                        : `Принято по приемке ${session.id}`,
+                                    userId: userId || session.createdById,
+                                },
+                            });
+
+                            updatedAssetsCount++;
+                            continue;
                         }
 
                         const existingAsset = await tx.asset.findFirst({
@@ -427,15 +551,12 @@ export class ReceivingService {
                             throw new BadRequestException(`ШК "${scan.code}" относится к другой модели`);
                         }
 
-                        if (linkedShipment) {
-                            const isPartOfShipment = linkedShipment.lines.some((line) =>
-                                line.productId === item.productId &&
-                                line.scans.some((shipmentScan) => this.normalizeScanCode(shipmentScan.code) === this.normalizeScanCode(scan.code)),
+                        if (linkedShipment && session.type !== 'RETURN') {
+                            this.validateLinkedShipmentScan(
+                                linkedShipment,
+                                item.productId ?? undefined,
+                                this.normalizeScanCode(scan.code) || '',
                             );
-
-                            if (!isPartOfShipment) {
-                                throw new BadRequestException('В приемку можно принять только те ШК, которые были отсканированы в отгрузке');
-                            }
                         }
 
                         await tx.asset.update({
@@ -443,7 +564,7 @@ export class ReceivingService {
                             data: {
                                 warehouseId: session.warehouseId,
                                 storeId: null,
-                                processStatus: 'AVAILABLE',
+                                processStatus: session.type === 'RETURN' ? 'UNSERVICED' : 'AVAILABLE',
                                 updatedAt: new Date(),
                             },
                         });
@@ -451,9 +572,9 @@ export class ReceivingService {
                         await tx.assetHistory.create({
                             data: {
                                 assetId: existingAsset.id,
-                                action: linkedShipment ? 'RECEIVED_TRANSFER' : 'RECEIVED_EXISTING',
+                                action: linkedShipment && session.type !== 'RETURN' ? 'RECEIVED_TRANSFER' : 'RECEIVED_EXISTING',
                                 location: `Warehouse: ${session.warehouseId}`,
-                                details: linkedShipment
+                                details: linkedShipment && session.type !== 'RETURN'
                                     ? `Принято по отгрузке ${linkedShipment.id}`
                                     : `Принято по приемке ${session.id}`,
                                 userId: userId || session.createdById,
@@ -496,7 +617,45 @@ export class ReceivingService {
                 }
             }
 
-            if (linkedShipment) {
+            if (missingReturnItems.length > 0) {
+                const missingDetails = missingReturnItems
+                    .map((item) => `${item.name}${item.sku ? ` (${item.sku})` : ''}`)
+                    .join(', ');
+
+                for (const missingItem of missingReturnItems) {
+                    if (!missingItem.linkedAssetId) continue;
+
+                    await tx.asset.update({
+                        where: { id: missingItem.linkedAssetId },
+                        data: {
+                            processStatus: 'LOST_IN_TRANSIT',
+                            updatedAt: new Date(),
+                        },
+                    });
+
+                    await tx.assetHistory.create({
+                        data: {
+                            assetId: missingItem.linkedAssetId,
+                            action: 'LOST_IN_TRANSIT',
+                            location: `Warehouse: ${session.warehouseId}`,
+                            details: `Не доехало по возвратной приемке ${session.id}`,
+                            fromStatus: 'IN_TRANSIT',
+                            toStatus: 'LOST_IN_TRANSIT',
+                            userId: userId || session.createdById,
+                        },
+                    });
+                }
+
+                await tx.receivingSession.update({
+                    where: { id: sessionId },
+                    data: {
+                        hasDiscrepancy: true,
+                        discrepancyDetails: `Не доехали позиции: ${missingDetails}`,
+                    },
+                });
+            }
+
+            if (linkedShipment && session.type !== 'RETURN') {
                 await tx.shipment.update({
                     where: { id: linkedShipment.id },
                     data: {
@@ -511,26 +670,10 @@ export class ReceivingService {
                     status: 'COMPLETED',
                     completedAt: new Date(),
                     completedById: userId || undefined,
+                    hasDiscrepancy: missingReturnItems.length > 0,
+                    discrepancyDetails: missingReturnItems.length > 0 ? undefined : null,
                 },
-                include: {
-                    warehouse: { select: { id: true, name: true } },
-                    createdBy: { select: { id: true, name: true } },
-                    completedBy: { select: { id: true, name: true } },
-                    items: {
-                        include: {
-                            product: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    sku: true,
-                                    accountingType: true,
-                                    category: { select: { code: true, name: true } },
-                                },
-                            },
-                            scans: { orderBy: { timestamp: 'desc' } },
-                        },
-                    },
-                },
+                include: this.getReceivingSessionInclude(),
             });
 
             this.eventsGateway.server.emit('receiving_update', completedSession);

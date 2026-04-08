@@ -24,6 +24,7 @@ enum AssetProcess {
   AVAILABLE
   RESERVED
   IN_TRANSIT
+  LOST_IN_TRANSIT
   DELIVERED
   INSTALLED
   UNSERVICED
@@ -147,6 +148,7 @@ model User {
   // Inventory Relations
   createdInventorySessions InventorySession[] @relation("InventoryCreator")
   scannedInventoryRecords  InventoryRecord[]  @relation("InventoryScanner")
+  createdInitialInventorySessions InitialInventorySession[] @relation("InitialInventoryCreator")
 
   @@map("users")
 }
@@ -190,6 +192,8 @@ model Product {
   assets           Asset[]
   stockItems       StockItem[]
   receivingItems   ReceivingItem[]
+  initialInventoryEntries InitialInventoryEntry[]
+  inventoryQuantityRecords InventoryQuantityRecord[]
   shipmentProducts ShipmentProduct[]
   shipmentLines    ShipmentLine[]
 
@@ -199,6 +203,7 @@ model Product {
 model Asset {
   id            String         @id @default(uuid())
   serialNumber  String         @unique
+  isUnidentified Boolean       @default(false)
   productId     String
   condition     AssetCondition @default(WORKING)
   processStatus AssetProcess   @default(AVAILABLE)
@@ -222,6 +227,7 @@ model Asset {
   requestItems  RequestItem[]
   shipmentItems ShipmentItem[]
   assetHistory  AssetHistory[]
+  receivingItems ReceivingItem[] @relation("ReceivingLinkedAsset")
 
   // Inventory Relations
   inventoryRecords InventoryRecord[]
@@ -254,12 +260,20 @@ enum ReceivingStatus {
   COMPLETED
 }
 
+enum InitialInventoryStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
 model ReceivingSession {
   id            String          @id @default(uuid())
   warehouseId   String
   status        ReceivingStatus @default(DRAFT)
   invoiceNumber String?
   supplier      String?
+  hasDiscrepancy   Boolean         @default(false)
+  discrepancyDetails String?
   createdById   String
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
@@ -282,6 +296,7 @@ model ReceivingSession {
 model ReceivingItem {
   id               String   @id @default(uuid())
   sessionId        String
+  linkedAssetId    String?
   name             String
   sku              String?
   expectedQuantity Int      @default(0)
@@ -293,6 +308,7 @@ model ReceivingItem {
   // Relations
   session ReceivingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   product Product?         @relation(fields: [productId], references: [id])
+  linkedAsset Asset?       @relation("ReceivingLinkedAsset", fields: [linkedAssetId], references: [id], onDelete: SetNull)
   scans   ReceivingScan[]
 
   @@map("receiving_items")
@@ -320,6 +336,7 @@ model Warehouse {
   phone       String?
   email       String?
   isActive    Boolean  @default(true)
+  initialInventoryCompletedAt DateTime?
   createdAt   DateTime @default(now())
 
   // Relations
@@ -331,8 +348,60 @@ model Warehouse {
 
   // Inventory Relations
   inventorySessions InventorySession[]
+  initialInventorySessions InitialInventorySession[]
 
   @@map("warehouses")
+}
+
+model InitialInventorySession {
+  id          String                 @id @default(uuid())
+  warehouseId String
+  createdById String
+  status      InitialInventoryStatus @default(IN_PROGRESS)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  completedAt DateTime?
+
+  warehouse Warehouse               @relation(fields: [warehouseId], references: [id])
+  createdBy User                    @relation("InitialInventoryCreator", fields: [createdById], references: [id])
+  entries    InitialInventoryEntry[]
+
+  @@map("initial_inventory_sessions")
+}
+
+model InitialInventoryEntry {
+    id         String   @id @default(uuid())
+    sessionId  String
+    productId  String
+    quantity   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+    session InitialInventorySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    product Product                 @relation(fields: [productId], references: [id])
+    scans   InitialInventoryScan[]
+  
+    @@index([sessionId, productId])
+    @@map("initial_inventory_entries")
+  }
+  
+model InitialInventoryScan {
+    id        String   @id @default(uuid())
+    entryId    String
+    code      String
+    linkedAssetId      String?
+    conflictType       String?
+    sourceWarehouseId  String?
+    sourceStoreId      String?
+    sourceProcessStatus String?
+    requiresReview     Boolean  @default(false)
+    reviewedAt         DateTime?
+    createdAt DateTime @default(now())
+  
+    entry InitialInventoryEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, code])
+  @@map("initial_inventory_scans")
 }
 
 model WarehouseBin {
@@ -633,7 +702,8 @@ model InventorySession {
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
   createdBy User      @relation("InventoryCreator", fields: [createdById], references: [id])
 
-  records InventoryRecord[]
+  records         InventoryRecord[]
+  quantityRecords InventoryQuantityRecord[]
 
   @@map("inventory_sessions")
 }
@@ -656,4 +726,20 @@ model InventoryRecord {
 
   @@unique([inventorySessionId, assetId])
   @@map("inventory_records")
+}
+
+model InventoryQuantityRecord {
+  id                 String   @id @default(uuid())
+  inventorySessionId String
+  productId          String
+  expectedQuantity   Int      @default(0)
+  countedQuantity    Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  session InventorySession @relation(fields: [inventorySessionId], references: [id], onDelete: Cascade)
+  product Product          @relation(fields: [productId], references: [id])
+
+  @@unique([inventorySessionId, productId])
+  @@map("inventory_quantity_records")
 }
