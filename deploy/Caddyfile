@@ -1,3 +1,7 @@
+{
+    admin off
+}
+
 winelab.run.place {
     encode zstd gzip
 

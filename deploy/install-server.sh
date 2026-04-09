@@ -13,8 +13,8 @@ ENV_DIR="$DEPLOY_DIR/env"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WL_COMMAND_PATH="/usr/local/bin/wl"
-GIT_REPO="${WL_GIT_REPO:-}"
-GIT_BRANCH="${WL_GIT_BRANCH:-}"
+GIT_REPO="${WL_GIT_REPO:-https://github.com/andrchq/winelab_web_admin.git}"
+GIT_BRANCH="${WL_GIT_BRANCH:-main}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -65,12 +65,10 @@ install_compose_plugin() {
 }
 
 install_caddy() {
-    if command -v caddy >/dev/null 2>&1; then
-        return
-    fi
-
     log "Installing Caddy..."
     ensure_package debian-keyring debian-archive-keyring apt-transport-https curl gnupg
+    $SUDO rm -f /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    $SUDO rm -f /etc/apt/sources.list.d/caddy-stable.list
     curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | $SUDO gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
     curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | $SUDO tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
     $SUDO apt-get update -y
@@ -106,11 +104,11 @@ verify_domain() {
 }
 
 resolve_git_source() {
-    if [ -z "$GIT_REPO" ]; then
+    if [ -z "${WL_GIT_REPO:-}" ]; then
         GIT_REPO="$(git -C "$SOURCE_DIR" config --get remote.origin.url 2>/dev/null || true)"
     fi
 
-    if [ -z "$GIT_BRANCH" ]; then
+    if [ -z "${WL_GIT_BRANCH:-}" ]; then
         GIT_BRANCH="$(git -C "$SOURCE_DIR" branch --show-current 2>/dev/null || true)"
     fi
 
