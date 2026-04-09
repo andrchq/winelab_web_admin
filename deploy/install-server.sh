@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-DOMAIN="${WL_DOMAIN:-winelab.run.place}"
+DOMAIN="${WL_DOMAIN:-lkwl.prsta.xyz}"
 SERVER_IP="${WL_SERVER_IP:-87.242.100.57}"
 APP_USER="${WL_APP_USER:-prsta}"
 INSTALL_ROOT="${WL_INSTALL_ROOT:-/home/prsta}"

@@ -15,7 +15,7 @@ The server install script:
 - creates `/home/prsta/winelab_web_admin`
 - copies a clean project version without local build artifacts and local env files
 - installs Docker and Docker Compose if missing
-- installs Caddy and binds it to `winelab.run.place`
+- installs Caddy and binds it to `lkwl.prsta.xyz`
 - enables automatic TLS through Caddy
 - installs the short management command `wl`
 - deploys the stack without loading test data
@@ -39,7 +39,7 @@ wl update
 The public webhook endpoint for Yandex Delivery is:
 
 ```text
-https://winelab.run.place/api/deliveries/provider/yandex/webhook
+https://lkwl.prsta.xyz/api/deliveries/provider/yandex/webhook
 ```
 
 If the Yandex token or Yandex Maps key was not passed during installation, edit:

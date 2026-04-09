@@ -2,7 +2,7 @@
     admin off
 }
 
-winelab.run.place {
+lkwl.prsta.xyz {
     encode zstd gzip
 
     reverse_proxy /api/* 127.0.0.1:3101
