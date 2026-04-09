@@ -63,9 +63,9 @@ wait_for_db() {
 reload_caddy() {
     if command -v systemctl >/dev/null 2>&1; then
         if [ "$(id -u)" -eq 0 ]; then
-            systemctl reload caddy
+            systemctl restart caddy
         else
-            sudo systemctl reload caddy
+            sudo systemctl restart caddy
         fi
     fi
 }
