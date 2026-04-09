@@ -3,7 +3,15 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { User } from '@/types/api';
 import { initializeAuth, getAuthToken } from '@/lib/api';
-import { login as authLogin, logout as authLogout, getStoredUser, getCurrentUser, LoginCredentials } from '@/lib/auth';
+import {
+    login as authLogin,
+    logout as authLogout,
+    getStoredUser,
+    getCurrentUser,
+    LoginCredentials,
+    bootstrapAdmin as authBootstrapAdmin,
+    BootstrapAdminPayload,
+} from '@/lib/auth';
 import { socket } from '@/lib/socket';
 
 interface AuthContextType {
@@ -11,6 +19,7 @@ interface AuthContextType {
     isLoading: boolean;
     isAuthenticated: boolean;
     login: (credentials: LoginCredentials) => Promise<void>;
+    bootstrapAdmin: (payload: BootstrapAdminPayload) => Promise<void>;
     logout: () => Promise<void>;
     hasRole: (roles: string[]) => boolean;
     hasPermission: (permissions: string[]) => boolean;
@@ -69,6 +78,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(response.user);
     };
 
+    const bootstrapAdmin = async (payload: BootstrapAdminPayload) => {
+        const response = await authBootstrapAdmin(payload);
+        setUser(response.user);
+    };
+
     const logout = async () => {
         await authLogout();
         setUser(null);
@@ -92,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 isLoading,
                 isAuthenticated: !!user,
                 login,
+                bootstrapAdmin,
                 logout,
                 hasRole,
                 hasPermission,

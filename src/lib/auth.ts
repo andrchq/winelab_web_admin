@@ -1,23 +1,41 @@
 // Auth service for WineLab Admin
 
 import { api, setAuthToken } from './api';
-import type { LoginResponse, User } from '@/types/api';
+import type { BootstrapStatus, LoginResponse, User } from '@/types/api';
 
 export interface LoginCredentials {
     email: string;
     password: string;
 }
 
-export async function login(credentials: LoginCredentials): Promise<LoginResponse> {
-    const response = await api.post<LoginResponse>('/auth/login', credentials);
+export interface BootstrapAdminPayload {
+    email: string;
+    password: string;
+    name: string;
+    phone?: string;
+}
 
-    // Store tokens
+function persistSession(response: LoginResponse) {
     setAuthToken(response.accessToken);
     if (typeof window !== 'undefined') {
         localStorage.setItem('refreshToken', response.refreshToken);
         localStorage.setItem('user', JSON.stringify(response.user));
     }
+}
 
+export async function login(credentials: LoginCredentials): Promise<LoginResponse> {
+    const response = await api.post<LoginResponse>('/auth/login', credentials);
+    persistSession(response);
+    return response;
+}
+
+export async function getBootstrapStatus(): Promise<BootstrapStatus> {
+    return api.get<BootstrapStatus>('/auth/bootstrap-status');
+}
+
+export async function bootstrapAdmin(payload: BootstrapAdminPayload): Promise<LoginResponse> {
+    const response = await api.post<LoginResponse>('/auth/bootstrap-admin', payload);
+    persistSession(response);
     return response;
 }
 

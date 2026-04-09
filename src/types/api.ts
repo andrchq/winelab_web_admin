@@ -39,6 +39,11 @@ export interface LoginResponse {
     refreshToken: string;
 }
 
+export interface BootstrapStatus {
+    requiresSetup: boolean;
+    userCount: number;
+}
+
 export interface EquipmentCategory {
     id: string;
     code: string;

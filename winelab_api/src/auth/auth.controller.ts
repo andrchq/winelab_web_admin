@@ -2,6 +2,8 @@ import { Controller, Post, Get, Body, HttpCode, HttpStatus, UseGuards } from '@n
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { AuthService } from './auth.service';
+import { Public } from './decorators/public.decorator';
+import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -11,6 +13,24 @@ import { CurrentUser } from './decorators/current-user.decorator';
 @Controller('auth')
 export class AuthController {
     constructor(private authService: AuthService) { }
+
+    @Get('bootstrap-status')
+    @Public()
+    @ApiOperation({ summary: 'Получить статус первичной настройки панели' })
+    @ApiResponse({ status: 200, description: 'Статус первичной настройки получен' })
+    async getBootstrapStatus() {
+        return this.authService.getBootstrapStatus();
+    }
+
+    @Post('bootstrap-admin')
+    @Public()
+    @HttpCode(HttpStatus.CREATED)
+    @ApiOperation({ summary: 'Создать первого администратора в пустой системе' })
+    @ApiResponse({ status: 201, description: 'Первый администратор создан' })
+    @ApiResponse({ status: 400, description: 'Первый администратор уже создан' })
+    async bootstrapAdmin(@Body() bootstrapAdminDto: BootstrapAdminDto) {
+        return this.authService.bootstrapAdmin(bootstrapAdminDto);
+    }
 
     @Post('login')
     @HttpCode(HttpStatus.OK)

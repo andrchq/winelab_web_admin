@@ -5,15 +5,11 @@ const prisma = new PrismaClient();
 async function main() {
     const permCount = await prisma.permission.count();
     const roleCount = await prisma.role.count();
-    const adminUser = await prisma.user.findUnique({ where: { email: 'admin@winelab.ru' }, include: { role: true } });
+    const userCount = await prisma.user.count();
 
     console.log(`Permissions count: ${permCount}`);
     console.log(`Roles count: ${roleCount}`);
-    console.log(`Admin user: ${adminUser ? 'Found' : 'Missing'}`);
-    if (adminUser) {
-        console.log(`Admin ID: ${adminUser.id}`);
-        console.log(`Admin Role: ${adminUser.role?.name}`);
-    }
+    console.log(`Users count: ${userCount}`);
 }
 
 main()

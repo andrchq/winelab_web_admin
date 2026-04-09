@@ -1,14 +1,11 @@
 import { PrismaClient } from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
-import { SystemPermission, PERMISSION_CATEGORIES } from '../src/auth/permissions';
+import { PERMISSION_CATEGORIES, SystemPermission } from '../src/auth/permissions';
 
 const prisma = new PrismaClient();
 
 async function main() {
     console.log('Start seeding RBAC...');
 
-    // 1. Create/Update Permissions
-    console.log('Seeding Permissions...');
     const permissions = Object.values(SystemPermission);
 
     for (const code of permissions) {
@@ -23,96 +20,69 @@ async function main() {
     }
     console.log(`Synced ${permissions.length} permissions.`);
 
-    // 2. Create Roles
-    console.log('Seeding Roles...');
-
-    // Define Roles and their permissions
-    const rolesDef = {
-        ADMIN: permissions, // Admin has all permissions
-        MANAGER: permissions.filter(p => !p.startsWith('SYSTEM')), // Manager has most
-        WAREHOUSE: permissions.filter(p =>
-            p.startsWith('WAREHOUSE') ||
-            p.startsWith('STOCK') ||
-            p.startsWith('SHIPMENT') ||
-            p.startsWith('RECEIVING') ||
-            p.startsWith('ASSET') ||
-            p.startsWith('这里Request') || // Typo in thought, strict checks slightly better
-            (p.startsWith('REQUEST') && p !== 'REQUEST_DELETE')
-        ),
-        USER: permissions.filter(p => p.endsWith('_READ') || p === 'REQUEST_CREATE'),
-    };
-
-    // Correcting WAREHOUSE filter to be more precise based on my permissions list
-    const warehousePermissions = permissions.filter(p =>
-        ['WAREHOUSE', 'STOCK', 'SHIPMENT', 'RECEIVING', 'ASSET', 'DELIVERY', 'PRODUCT'].some(prefix => p.startsWith(prefix)) ||
-        p.startsWith('REQUEST')
+    const warehousePermissions = permissions.filter((permission) =>
+        ['WAREHOUSE', 'STOCK', 'SHIPMENT', 'RECEIVING', 'ASSET', 'DELIVERY', 'PRODUCT'].some((prefix) =>
+            permission.startsWith(prefix),
+        ) || permission.startsWith('REQUEST'),
     );
 
     const roleConfigs = [
-        { name: 'ADMIN', description: 'Administrator', permissions: permissions, isSystem: true },
+        { name: 'ADMIN', description: 'Administrator', permissions, isSystem: true },
         {
-            name: 'MANAGER', description: 'Manager', permissions: permissions.filter(p =>
-                p !== SystemPermission.USER_DELETE &&
-                p !== SystemPermission.ROLE_DELETE &&
-                p !== SystemPermission.SHIPMENT_DELETE &&
-                p !== SystemPermission.CATEGORY_MANAGE
-            ), isSystem: true
+            name: 'MANAGER',
+            description: 'Manager',
+            permissions: permissions.filter((permission) =>
+                permission !== SystemPermission.USER_DELETE &&
+                permission !== SystemPermission.ROLE_DELETE &&
+                permission !== SystemPermission.SHIPMENT_DELETE &&
+                permission !== SystemPermission.CATEGORY_MANAGE,
+            ),
+            isSystem: true,
         },
-        { name: 'WAREHOUSE', description: 'Warehouse Worker', permissions: warehousePermissions, isSystem: true },
-        { name: 'USER', description: 'Regular User', permissions: [SystemPermission.STORE_READ, SystemPermission.PRODUCT_READ, SystemPermission.REQUEST_READ, SystemPermission.REQUEST_CREATE], isSystem: true },
+        {
+            name: 'WAREHOUSE',
+            description: 'Warehouse Worker',
+            permissions: warehousePermissions,
+            isSystem: true,
+        },
+        {
+            name: 'USER',
+            description: 'Regular User',
+            permissions: [
+                SystemPermission.STORE_READ,
+                SystemPermission.PRODUCT_READ,
+                SystemPermission.REQUEST_READ,
+                SystemPermission.REQUEST_CREATE,
+            ],
+            isSystem: true,
+        },
     ];
 
     for (const roleConfig of roleConfigs) {
-        // Create Role
         const role = await prisma.role.upsert({
             where: { name: roleConfig.name },
             update: { description: roleConfig.description, isSystem: roleConfig.isSystem },
             create: { name: roleConfig.name, description: roleConfig.description, isSystem: roleConfig.isSystem },
         });
 
-        // Assign Permissions
-        // First remove existing permissions for this role to ensure strict sync
         await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
 
-        // Batch create
         const permissionRecords = await prisma.permission.findMany({
-            where: { code: { in: roleConfig.permissions } }
+            where: { code: { in: roleConfig.permissions } },
         });
 
         await prisma.rolePermission.createMany({
-            data: permissionRecords.map(p => ({
+            data: permissionRecords.map((permission) => ({
                 roleId: role.id,
-                permissionId: p.id
-            }))
+                permissionId: permission.id,
+            })),
         });
 
         console.log(`Role ${role.name} updated with ${permissionRecords.length} permissions.`);
     }
 
-    // 3. Create Admin User
-    console.log('Seeding Admin User...');
-    const adminEmail = 'admin@winelab.ru';
-    const adminPassword = await bcrypt.hash('admin123', 10);
-    const adminRole = await prisma.role.findUnique({ where: { name: 'ADMIN' } });
-
-    if (adminRole) {
-        const admin = await prisma.user.upsert({
-            where: { email: adminEmail },
-            update: {
-                roleId: adminRole.id
-            },
-            create: {
-                email: adminEmail,
-                password: adminPassword,
-                name: 'System Admin',
-                roleId: adminRole.id,
-                isActive: true
-            }
-        });
-        console.log(`Admin user ${admin.email} ensured.`);
-    }
-
-    console.log('RBAC Seeding completed.');
+    console.log('RBAC seeding completed.');
+    console.log('Users are not created here anymore. Create the first administrator on the login screen.');
 }
 
 main()
