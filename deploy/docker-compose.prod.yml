@@ -25,7 +25,7 @@ services:
     env_file:
       - ./env/api.env
     ports:
-      - "127.0.0.1:3001:3001"
+      - "127.0.0.1:${API_BIND_PORT:-3101}:3001"
 
   web:
     build:
@@ -40,7 +40,7 @@ services:
     env_file:
       - ./env/web.env
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${WEB_BIND_PORT:-3100}:3000"
 
 volumes:
   postgres_data:
