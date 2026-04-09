@@ -1,0 +1,16 @@
+.git
+.gitignore
+.next
+node_modules
+dist
+coverage
+*.log
+.env
+.env.local
+.env.production
+.env.development
+winelab_api/node_modules
+winelab_api/dist
+winelab_api/.env
+deploy/env
+winelab_api/docker-compose.yml

@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROJECT_DIR="/home/prsta/winelab_web_admin"
+COMPOSE_FILE="$PROJECT_DIR/deploy/docker-compose.prod.yml"
+ENV_FILE="$PROJECT_DIR/deploy/env/compose.env"
+CADDYFILE="$PROJECT_DIR/deploy/Caddyfile"
+WL_INSTALL_PATH="/usr/local/bin/wl"
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+if [ ! -d "$PROJECT_DIR" ]; then
+    echo -e "${RED}Project directory not found: $PROJECT_DIR${NC}"
+    exit 1
+fi
+
+if [ ! -f "$COMPOSE_FILE" ] || [ ! -f "$ENV_FILE" ]; then
+    echo -e "${RED}Deployment files are missing. Run the server install script first.${NC}"
+    exit 1
+fi
+
+DOCKER_BIN="docker"
+if ! docker info >/dev/null 2>&1; then
+    if command -v sudo >/dev/null 2>&1 && sudo -n docker info >/dev/null 2>&1; then
+        DOCKER_BIN="sudo docker"
+    else
+        echo -e "${RED}Docker is not available for the current user.${NC}"
+        exit 1
+    fi
+fi
+
+run_compose() {
+    cd "$PROJECT_DIR"
+    $DOCKER_BIN compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+run_git() {
+    git -C "$PROJECT_DIR" "$@"
+}
+
+wait_for_db() {
+    echo -e "${BLUE}Waiting for PostgreSQL...${NC}"
+    local retries=30
+    local count=0
+
+    while [ "$count" -lt "$retries" ]; do
+        if run_compose exec -T db sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1; then
+            return 0
+        fi
+        count=$((count + 1))
+        sleep 2
+    done
+
+    echo -e "${RED}PostgreSQL did not become ready in time.${NC}"
+    exit 1
+}
+
+reload_caddy() {
+    if command -v systemctl >/dev/null 2>&1; then
+        if [ "$(id -u)" -eq 0 ]; then
+            systemctl reload caddy
+        else
+            sudo systemctl reload caddy
+        fi
+    fi
+}
+
+install_self() {
+    if [ -f "$PROJECT_DIR/deploy/wl" ]; then
+        if [ "$(id -u)" -eq 0 ]; then
+            install -m 755 "$PROJECT_DIR/deploy/wl" "$WL_INSTALL_PATH"
+        elif command -v sudo >/dev/null 2>&1; then
+            sudo install -m 755 "$PROJECT_DIR/deploy/wl" "$WL_INSTALL_PATH"
+        fi
+    fi
+}
+
+sync_caddy_config() {
+    if [ ! -f "$PROJECT_DIR/deploy/Caddyfile" ]; then
+        return
+    fi
+
+    if [ "$(id -u)" -eq 0 ]; then
+        cp "$PROJECT_DIR/deploy/Caddyfile" /etc/caddy/Caddyfile
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo cp "$PROJECT_DIR/deploy/Caddyfile" /etc/caddy/Caddyfile
+    fi
+}
+
+update_from_git() {
+    if ! run_git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo -e "${RED}The deployed project is not a git repository.${NC}"
+        exit 1
+    fi
+
+    local branch
+    branch="${1:-$(run_git branch --show-current)}"
+    if [ -z "$branch" ]; then
+        echo -e "${RED}Unable to determine git branch for update.${NC}"
+        exit 1
+    fi
+
+    echo -e "${BLUE}Updating code from git branch ${branch}...${NC}"
+    run_git fetch --prune origin
+    run_git checkout "$branch"
+    run_git reset --hard "origin/$branch"
+
+    install_self
+    sync_caddy_config
+    reload_caddy
+
+    echo -e "${BLUE}Rebuilding containers after git update...${NC}"
+    run_compose build --pull
+    run_compose up -d db
+    wait_for_db
+    run_compose run --rm api npm run prisma:deploy
+    run_compose up -d api web
+
+    echo -e "${GREEN}Update finished.${NC}"
+}
+
+show_help() {
+    echo "Usage: wl [command]"
+    echo
+    echo "Commands:"
+    echo "  deploy     Build containers, apply migrations and start the stack"
+    echo "  start      Start existing containers"
+    echo "  stop       Stop containers"
+    echo "  restart    Restart containers"
+    echo "  rebuild    Rebuild images and restart containers"
+    echo "  update     Pull the latest code from git and redeploy"
+    echo "  migrate    Apply Prisma migrations inside the API container"
+    echo "  logs       Show stack logs"
+    echo "  status     Show container and Caddy status"
+    echo "  caddy      Reload Caddy configuration"
+}
+
+case "${1:-}" in
+    deploy)
+        echo -e "${GREEN}Deploying WineLab stack...${NC}"
+        run_compose build
+        run_compose up -d db
+        wait_for_db
+        run_compose run --rm api npm run prisma:deploy
+        run_compose up -d api web
+        reload_caddy
+        echo -e "${GREEN}Deployment finished.${NC}"
+        ;;
+    start)
+        run_compose up -d
+        reload_caddy
+        ;;
+    stop)
+        run_compose stop
+        ;;
+    restart)
+        run_compose restart
+        reload_caddy
+        ;;
+    rebuild)
+        run_compose build --no-cache
+        run_compose up -d db
+        wait_for_db
+        run_compose run --rm api npm run prisma:deploy
+        run_compose up -d api web
+        reload_caddy
+        ;;
+    update)
+        update_from_git "${2:-}"
+        ;;
+    migrate)
+        run_compose up -d db
+        wait_for_db
+        run_compose run --rm api npm run prisma:deploy
+        ;;
+    logs)
+        run_compose logs -f "${2:-}"
+        ;;
+    status)
+        echo -e "${BLUE}Containers:${NC}"
+        run_compose ps
+        echo
+        echo -e "${BLUE}Caddy:${NC}"
+        if command -v systemctl >/dev/null 2>&1; then
+            if [ "$(id -u)" -eq 0 ]; then
+                systemctl --no-pager --full status caddy | sed -n '1,12p'
+            else
+                sudo systemctl --no-pager --full status caddy | sed -n '1,12p'
+            fi
+        else
+            echo "systemctl not available"
+        fi
+        echo
+        echo -e "${BLUE}Caddyfile:${NC} $CADDYFILE"
+        ;;
+    caddy)
+        reload_caddy
+        echo -e "${GREEN}Caddy reloaded.${NC}"
+        ;;
+    help|-h|--help|"")
+        show_help
+        ;;
+    *)
+        echo -e "${RED}Unknown command: $1${NC}"
+        show_help
+        exit 1
+        ;;
+esac

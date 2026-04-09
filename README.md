@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WineLab Web Admin
 
-## Getting Started
+## Production deploy
 
-First, run the development server:
+Production deployment is handled by:
+
+- `install.sh`
+- `deploy/install-server.sh`
+- `deploy/docker-compose.prod.yml`
+- `deploy/Caddyfile`
+- `deploy/wl`
+
+The server install script:
+
+- creates `/home/prsta/winelab_web_admin`
+- copies a clean project version without local build artifacts and local env files
+- installs Docker and Docker Compose if missing
+- installs Caddy and binds it to `winelab.run.place`
+- enables automatic TLS through Caddy
+- installs the short management command `wl`
+- deploys the stack without loading test data
+
+Run on the server from the repository root:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+chmod +x install.sh
+sudo ./install.sh
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+After installation:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+wl deploy
+wl status
+wl logs
+wl update
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The public webhook endpoint for Yandex Delivery is:
 
-## Learn More
+```text
+https://winelab.run.place/api/deliveries/provider/yandex/webhook
+```
 
-To learn more about Next.js, take a look at the following resources:
+If the Yandex token or Yandex Maps key was not passed during installation, edit:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `/home/prsta/winelab_web_admin/deploy/env/api.env`
+- `/home/prsta/winelab_web_admin/deploy/env/web.env`
+- `/home/prsta/winelab_web_admin/deploy/env/compose.env`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+and run:
 
-## Deploy on Vercel
+```bash
+wl deploy
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`wl update` pulls the latest code from git, rebuilds the frontend and backend images, applies Prisma migrations and restarts the stack. New npm packages and backend dependencies are installed automatically during the image rebuild because both images are rebuilt from the updated `package-lock.json` files.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Local development
+
+Frontend:
+
+```bash
+npm install
+npm run dev
+```
+
+Backend:
+
+```bash
+cd winelab_api
+npm install
+npm run start:dev
+```
