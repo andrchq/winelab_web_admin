@@ -65,7 +65,7 @@ export default function UsersPage() {
             phone: data.phone?.trim() || undefined,
             password: data.password?.trim() || undefined,
             roleId: data.roleId || undefined,
-            warehouseId: data.warehouseId || undefined,
+            warehouseId: data.warehouseId?.trim() || undefined,
             isActive: data.isActive,
         };
 
@@ -253,7 +253,7 @@ export default function UsersPage() {
                                                                 {user.phone && (
                                                                     <p className="text-sm text-muted-foreground flex items-center gap-1.5">
                                                                         <Phone className="h-3.5 w-3.5" />
-                                                                {user.phone}
+                                                                        {user.phone}
                                                                     </p>
                                                                 )}
                                                                 {roleName === 'WAREHOUSE' && user.warehouse && (

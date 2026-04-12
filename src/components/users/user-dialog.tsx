@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,6 +56,7 @@ const TEXT = {
     save: "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c",
     generateTitle: "\u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043f\u0430\u0440\u043e\u043b\u044c",
     copyTitle: "\u0421\u043a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043f\u0430\u0440\u043e\u043b\u044c",
+    dialogDescription: "\u0424\u043e\u0440\u043c\u0430 \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u044f \u0438 \u0440\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f \u0443\u0447\u0435\u0442\u043d\u043e\u0439 \u0437\u0430\u043f\u0438\u0441\u0438.",
 };
 
 function generatePassword(length = PASSWORD_LENGTH) {
@@ -94,15 +95,16 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
         }
 
         if (user) {
-            setValue("name", user.name);
-            setValue("email", user.email);
-            setValue("phone", user.phone || "");
-            setValue("password", "");
-
             const roleId = user.role && typeof user.role === "object" ? user.role.id : "";
-            setValue("roleId", roleId);
-            setValue("warehouseId", user.warehouse?.id || "");
-            setValue("isActive", user.isActive);
+            reset({
+                name: user.name,
+                email: user.email,
+                phone: user.phone || "",
+                password: "",
+                roleId,
+                warehouseId: user.warehouse?.id || "",
+                isActive: user.isActive,
+            });
             return;
         }
 
@@ -115,7 +117,7 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
             warehouseId: "",
             isActive: true,
         });
-    }, [user, open, setValue, reset]);
+    }, [user, open, reset]);
 
     useEffect(() => {
         if (selectedRoleName !== "WAREHOUSE") {
@@ -194,6 +196,7 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
             <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
                     <DialogTitle>{user ? TEXT.editTitle : TEXT.createTitle}</DialogTitle>
+                    <DialogDescription className="sr-only">{TEXT.dialogDescription}</DialogDescription>
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -276,8 +279,7 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
                         <Label htmlFor="role">{TEXT.roleLabel}</Label>
                         <Select
                             onValueChange={(value) => setValue("roleId", value, { shouldValidate: true, shouldDirty: true })}
-                            defaultValue={user?.role && typeof user.role === "object" ? user.role.id : undefined}
-                            value={selectedRoleId || undefined}
+                            value={selectedRoleId}
                         >
                             <SelectTrigger>
                                 <SelectValue placeholder={TEXT.rolePlaceholder} />
@@ -305,7 +307,7 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
                                     setValue("warehouseId", value, { shouldValidate: true, shouldDirty: true });
                                     clearErrors("warehouseId");
                                 }}
-                                value={watch("warehouseId") || undefined}
+                                value={watch("warehouseId") || ""}
                             >
                                 <SelectTrigger>
                                     <SelectValue placeholder={TEXT.warehousePlaceholder} />
