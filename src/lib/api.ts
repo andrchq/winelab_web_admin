@@ -148,3 +148,9 @@ export const deliveryApi = {
     ) => api.patch<any>(`/deliveries/${id}/status`, data),
     syncProvider: (id: string) => api.post<any>(`/deliveries/${id}/sync-provider`),
 };
+
+export const notificationsApi = {
+    getAll: () => api.get<any>('/notifications'),
+    markRead: (id: string) => api.patch<any>(`/notifications/${id}/read`),
+    markAllRead: () => api.patch<any>('/notifications/read-all'),
+};

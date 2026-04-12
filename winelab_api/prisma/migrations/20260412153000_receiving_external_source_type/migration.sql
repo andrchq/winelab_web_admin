@@ -1,0 +1,2 @@
+ALTER TABLE "receiving_sessions"
+ADD COLUMN "sourceType" TEXT NOT NULL DEFAULT 'INTERNAL';

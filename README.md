@@ -72,3 +72,11 @@ cd winelab_api
 npm install
 npm run start:dev
 ```
+
+## Encoding rule
+
+All source files and configs in this repository must be saved as `UTF-8` without BOM.
+
+- Any broken UTF-8 text, latin/cyrillic mojibake sequences, or Unicode replacement characters is forbidden in committed code.
+- Before finishing text-heavy UI or API changes, run `npm run lint:encoding` from the repository root.
+- If the check fails, the broken file must be recreated or re-saved in valid `UTF-8` before any further edits.

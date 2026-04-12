@@ -11,12 +11,13 @@ import { useCategories, useProducts } from "@/lib/hooks";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { InvoiceItem } from "@/lib/file-parser";
+import type { ReceivingSourceType } from "@/lib/receiving-service";
 import type { EquipmentCategory, Product } from "@/types/api";
 
 interface ManualInvoiceDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    onSubmit: (items: InvoiceItem[], mapping: Record<string, string>, source: string) => void;
+    onSubmit: (items: InvoiceItem[], mapping: Record<string, string>, source: string, sourceType: ReceivingSourceType) => void;
 }
 
 interface RowItem {
@@ -39,6 +40,9 @@ const TEXT = {
     processingError: "\u041f\u0440\u043e\u0438\u0437\u043e\u0448\u043b\u0430 \u043e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0435 \u0441\u043f\u0438\u0441\u043a\u0430",
     title: "\u0420\u0443\u0447\u043d\u043e\u0435 \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u043d\u0430\u043a\u043b\u0430\u0434\u043d\u043e\u0439",
     description: "\u0417\u0430\u043f\u043e\u043b\u043d\u0438\u0442\u0435 \u0441\u043f\u0438\u0441\u043e\u043a \u043e\u0431\u043e\u0440\u0443\u0434\u043e\u0432\u0430\u043d\u0438\u044f \u0438\u0437 \u0441\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a\u0430 \u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u0439.",
+    sourceTypeLabel: "\u0422\u0438\u043f \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a\u0430",
+    sourceTypeExternal: "\u0412\u043d\u0435\u0448\u043d\u0438\u0439 \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a",
+    sourceTypeInternal: "\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u0435\u0435 \u043f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u0435",
     sourceLabel: "\u041e\u0442\u043a\u0443\u0434\u0430 \u043f\u0440\u0438\u0432\u043e\u0437\u0438\u0442\u0441\u044f (\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a / \u0421\u043a\u043b\u0430\u0434)",
     sourcePlaceholder: "\u043d\u0430\u043f\u0440\u0438\u043c\u0435\u0440: \u0413\u043b\u0430\u0432\u043d\u044b\u0439 \u0441\u043a\u043b\u0430\u0434, \u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a \u041e\u041e\u041e '\u0422\u0435\u0445\u043d\u043e'",
     listLabel: "\u0421\u043f\u0438\u0441\u043e\u043a \u043e\u0431\u043e\u0440\u0443\u0434\u043e\u0432\u0430\u043d\u0438\u044f",
@@ -56,6 +60,7 @@ const TEXT = {
 export function ManualInvoiceDialog({ open, onOpenChange, onSubmit }: ManualInvoiceDialogProps) {
     const { data: products } = useProducts();
     const { data: categories } = useCategories();
+    const [sourceType, setSourceType] = useState<ReceivingSourceType>("EXTERNAL");
     const [source, setSource] = useState("");
     const [rows, setRows] = useState<RowItem[]>([
         { tempId: "1", categoryId: "", quantity: 1 }
@@ -196,9 +201,10 @@ export function ManualInvoiceDialog({ open, onOpenChange, onSubmit }: ManualInvo
                 finalMapping[itemInvoiceId] = resolvedProduct.id;
             }
 
-            onSubmit(finalItems, finalMapping, source);
+            onSubmit(finalItems, finalMapping, source, sourceType);
             onOpenChange(false);
             setRows([{ tempId: Math.random().toString(36), categoryId: "", quantity: 1 }]);
+            setSourceType("EXTERNAL");
             setSource("");
         } catch (error) {
             console.error(error);
@@ -217,6 +223,19 @@ export function ManualInvoiceDialog({ open, onOpenChange, onSubmit }: ManualInvo
                 </DialogHeader>
 
                 <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+                    <div className="space-y-2">
+                        <Label>{TEXT.sourceTypeLabel}</Label>
+                        <Select value={sourceType} onValueChange={(value) => setSourceType(value as ReceivingSourceType)}>
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="EXTERNAL">{TEXT.sourceTypeExternal}</SelectItem>
+                                <SelectItem value="INTERNAL">{TEXT.sourceTypeInternal}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
                     <div className="space-y-2">
                         <Label htmlFor="source">{TEXT.sourceLabel}</Label>
                         <Input

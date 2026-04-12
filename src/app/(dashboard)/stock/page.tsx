@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 
 import { useState, useMemo, Fragment } from "react";
 
-import { Warehouse, Plus, Filter, AlertTriangle, TrendingDown, Package, Edit2, Info } from "lucide-react";
+import { Warehouse, Filter, AlertTriangle, TrendingDown, Package, Edit2, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, StatCard } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/input";
@@ -33,7 +33,7 @@ interface GroupedStock {
 export default function StockPage() {
     const { data: stockItems, isLoading: stockLoading, refetch: refetchStock } = useStockItems();
     const { data: warehouses, isLoading: warehousesLoading, refetch: refetchWarehouses } = useWarehouses();
-    const { hasRole } = useAuth();
+    const { hasPermission } = useAuth();
 
     const searchParams = useSearchParams();
     const initialLowStock = searchParams.get('filter') === 'low';
@@ -54,6 +54,9 @@ export default function StockPage() {
     const refetch = async () => {
         await Promise.all([refetchStock(), refetchWarehouses()]);
     };
+
+    const canManageStock = hasPermission(['STOCK_UPDATE']);
+    const canManageProducts = hasPermission(['PRODUCT_CREATE']);
 
     const displayStockItems = useMemo(() => {
         return (warehouses || []).flatMap((warehouse) =>
@@ -155,13 +158,14 @@ export default function StockPage() {
                         <p className="text-sm text-muted-foreground mt-1">Управление остатками и справочником моделей</p>
                     </div>
                     <div className="flex gap-2 w-full md:w-auto">
-                        {hasRole(['ADMIN', 'MANAGER', 'WAREHOUSE']) && (
+                        {canManageProducts && (
                             <AddProductDialog onSuccess={refetch} />
                         )}
-                        <Button variant="gradient" onClick={() => setIsAddOpen(true)} className="flex-1 md:flex-none">
-                            <Plus className="h-4 w-4" />
-                            Новая позиция
-                        </Button>
+                        {canManageStock && (
+                            <Button variant="gradient" onClick={() => setIsAddOpen(true)} className="flex-1 md:flex-none">
+                                Привязать позицию
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -373,7 +377,7 @@ export default function StockPage() {
                                                             </div>
                                                         </td>
                                                         <td onClick={(e) => e.stopPropagation()}>
-                                                            {hasRole(['ADMIN', 'MANAGER', 'WAREHOUSE']) && group.product.accountingType === 'QUANTITY' && (
+                                                            {canManageStock && group.product.accountingType === 'QUANTITY' && (
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="sm"

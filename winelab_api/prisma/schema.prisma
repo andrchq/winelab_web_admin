@@ -76,6 +76,23 @@ enum StoreStatus {
   TECHNICAL_ISSUES // Технические проблемы
 }
 
+enum NotificationScope {
+  GLOBAL
+  ROLE
+  USER
+}
+
+enum NotificationType {
+  SYSTEM
+  REQUEST
+  DELIVERY
+  RECEIVING
+  SHIPMENT
+  STORE
+  INVENTORY
+  SECURITY
+}
+
 // ============== MODELS ==============
 
 // --- RBAC System ---
@@ -99,6 +116,7 @@ model Role {
 
   permissions RolePermission[]
   users       User[]
+  notificationTargets NotificationRoleTarget[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -129,6 +147,8 @@ model User {
   // RBAC Relation
   roleId String?
   role   Role?   @relation(fields: [roleId], references: [id])
+  warehouseId String?
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -149,6 +169,8 @@ model User {
   createdInventorySessions InventorySession[] @relation("InventoryCreator")
   scannedInventoryRecords  InventoryRecord[]  @relation("InventoryScanner")
   createdInitialInventorySessions InitialInventorySession[] @relation("InitialInventoryCreator")
+  notifications Notification[] @relation("NotificationTargetUser")
+  notificationReads NotificationRead[]
 
   @@map("users")
 }
@@ -204,6 +226,7 @@ model Asset {
   id            String         @id @default(uuid())
   serialNumber  String         @unique
   isUnidentified Boolean       @default(false)
+  installationConfirmed Boolean @default(true)
   productId     String
   condition     AssetCondition @default(WORKING)
   processStatus AssetProcess   @default(AVAILABLE)
@@ -272,6 +295,7 @@ model ReceivingSession {
   status        ReceivingStatus @default(DRAFT)
   invoiceNumber String?
   supplier      String?
+  sourceType    String          @default("INTERNAL") // INTERNAL, EXTERNAL
   hasDiscrepancy   Boolean         @default(false)
   discrepancyDetails String?
   createdById   String
@@ -345,6 +369,8 @@ model Warehouse {
   stockItems        StockItem[]
   shipments         Shipment[]
   receivingSessions ReceivingSession[]
+  users             User[]
+  notifications     Notification[]
 
   // Inventory Relations
   inventorySessions InventorySession[]
@@ -460,6 +486,63 @@ model Store {
   deliveries Delivery[]
 
   @@map("stores")
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model Notification {
+  id        String            @id @default(uuid())
+  title     String
+  message   String
+  type      NotificationType  @default(SYSTEM)
+  scope     NotificationScope @default(GLOBAL)
+  link      String?
+  meta      Json?
+  userId    String?
+  warehouseId String?
+  createdAt DateTime          @default(now())
+
+  user        User?                    @relation("NotificationTargetUser", fields: [userId], references: [id], onDelete: Cascade)
+  warehouse   Warehouse?               @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  roleTargets NotificationRoleTarget[]
+  reads       NotificationRead[]
+
+  @@index([scope, createdAt])
+  @@index([userId, createdAt])
+  @@index([warehouseId, createdAt])
+  @@map("notifications")
+}
+
+model NotificationRoleTarget {
+  notificationId String
+  roleId         String
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, roleId])
+  @@map("notification_role_targets")
+}
+
+model NotificationRead {
+  notificationId String
+  userId         String
+  readAt         DateTime @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, userId])
+  @@index([userId, readAt])
+  @@map("notification_reads")
 }
 
 model Request {

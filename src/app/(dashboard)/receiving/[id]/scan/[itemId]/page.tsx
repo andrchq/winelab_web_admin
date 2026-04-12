@@ -31,6 +31,7 @@ export default function ScanningPage() {
 
     const item = session?.items.find((entry) => entry.id === itemId) || null;
     const needsBinding = Boolean(item?.linkedAsset?.isUnidentified);
+    const canRegisterNewBarcode = session?.sourceType === "EXTERNAL" && item?.product?.accountingType !== "QUANTITY";
 
     const loadData = async () => {
         try {
@@ -205,6 +206,14 @@ export default function ScanningPage() {
                             <CardContent className="p-4 text-sm text-amber-900">
                                 Это legacy-оборудование без реального ШК в системе. Отсканируй фактический штрихкод устройства.
                                 После завершения приемки он будет привязан к текущему asset, и позиция станет обычной.
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {canRegisterNewBarcode && !needsBinding && (
+                        <Card className="border-blue-300 bg-blue-50">
+                            <CardContent className="p-4 text-sm text-blue-900">
+                                Это внешняя приемка. Если ШК еще не существует в системе, просто отсканируй его: при завершении приемки будет создана новая единица оборудования с этим кодом.
                             </CardContent>
                         </Card>
                     )}

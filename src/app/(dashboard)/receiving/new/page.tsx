@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -9,29 +9,26 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { parseInvoiceFile, InvoiceItem } from "@/lib/file-parser";
 import { useWarehouses, useProducts } from "@/lib/hooks";
-import { receivingService } from "@/lib/receiving-service";
+import { receivingService, type ReceivingSourceType } from "@/lib/receiving-service";
 import { useRouter } from "next/navigation";
-import { Loader2, ArrowRight, Upload, Check, AlertTriangle, FileSpreadsheet } from "lucide-react";
+import { ArrowRight, Upload, Check, AlertTriangle, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { ManualInvoiceDialog } from "@/components/receiving/ManualInvoiceDialog";
 import { PlusCircle } from "lucide-react";
 
-import { useTSDMode } from "@/contexts/TSDModeContext";
-
 export default function NewReceivingPage() {
     const router = useRouter();
-    const { data: warehouses, isLoading: isWarehousesLoading } = useWarehouses();
-    const { data: products, isLoading: isProductsLoading } = useProducts();
-    const { isTSDMode } = useTSDMode();
+    const { data: warehouses } = useWarehouses();
+    const { data: products } = useProducts();
 
     const [step, setStep] = useState<"upload" | "mapping" | "review">("upload");
     const [warehouseId, setWarehouseId] = useState<string>("");
     const [file, setFile] = useState<File | null>(null);
     const [parsedItems, setParsedItems] = useState<InvoiceItem[]>([]);
-    const [isParsing, setIsParsing] = useState(false);
     const [isManualDialogOpen, setIsManualDialogOpen] = useState(false);
     const [supplier, setSupplier] = useState<string>("");
+    const [sourceType, setSourceType] = useState<ReceivingSourceType>("EXTERNAL");
     const [creationMethod, setCreationMethod] = useState<'file' | 'manual'>('file');
 
     // Mapping: invoiceItemId -> productId
@@ -47,8 +44,6 @@ export default function NewReceivingPage() {
         if (!selectedFile) return;
         setFile(selectedFile);
         setCreationMethod('file');
-        setSupplier("");
-        setIsParsing(true);
         try {
             const items = await parseInvoiceFile(selectedFile);
             setParsedItems(items);
@@ -73,14 +68,16 @@ export default function NewReceivingPage() {
             console.error(error);
             toast.error("Ошибка при чтении файла");
             setFile(null);
-        } finally {
-            setIsParsing(false);
         }
     };
 
     const handleContinueToMapping = () => {
         if (!warehouseId) {
             toast.error("Выберите склад");
+            return;
+        }
+        if (!supplier.trim()) {
+            toast.error("Укажите источник поставки");
             return;
         }
         if (parsedItems.length === 0) {
@@ -111,7 +108,8 @@ export default function NewReceivingPage() {
                 mapping,
                 invoiceNumber: creationMethod === 'file' ? file?.name : undefined,
                 supplier: supplier, // Pass supplier
-                type: creationMethod
+                type: creationMethod,
+                sourceType,
             });
             toast.success("Сессия приемки создана");
             router.push(`/receiving/${session.id}`);
@@ -120,10 +118,16 @@ export default function NewReceivingPage() {
             toast.error("Ошибка при создании сессии");
         }
     };
-    const handleManualSubmit = (items: InvoiceItem[], manualMapping: Record<string, string>, source: string) => {
+    const handleManualSubmit = (
+        items: InvoiceItem[],
+        manualMapping: Record<string, string>,
+        source: string,
+        manualSourceType: ReceivingSourceType,
+    ) => {
         setParsedItems(items);
         setMapping(manualMapping);
         setSupplier(source); // Capture supplier from manual dialog
+        setSourceType(manualSourceType);
         setCreationMethod('manual');
 
         // Use a dummy file object so the rest of the UI thinks a file is loaded (for steps logic)
@@ -181,6 +185,29 @@ export default function NewReceivingPage() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label>Тип источника</Label>
+                                    <Select value={sourceType} onValueChange={(value) => setSourceType(value as ReceivingSourceType)}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="EXTERNAL">Внешний источник</SelectItem>
+                                            <SelectItem value="INTERNAL">Внутреннее перемещение</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>{sourceType === 'EXTERNAL' ? 'Поставщик / внешний склад' : 'Откуда перемещаем'}</Label>
+                                    <Input
+                                        value={supplier}
+                                        onChange={(e) => setSupplier(e.target.value)}
+                                        placeholder={sourceType === 'EXTERNAL' ? 'Например: внешний склад поставщика' : 'Например: склад филиала или номер перемещения'}
+                                    />
+                                </div>
                             </div>
 
                             <div className="space-y-2">
@@ -350,6 +377,13 @@ export default function NewReceivingPage() {
                                 <div className="p-4 rounded-lg border bg-muted/20">
                                     <div className="text-sm text-muted-foreground">Склад</div>
                                     <div className="font-medium text-lg">{warehouses?.find(w => w.id === warehouseId)?.name || "Неизвестно"}</div>
+                                </div>
+                                <div className="p-4 rounded-lg border bg-muted/20">
+                                    <div className="text-sm text-muted-foreground">Источник</div>
+                                    <div className="font-medium text-lg">{supplier || "Не указан"}</div>
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                        {sourceType === 'EXTERNAL' ? 'Внешняя приемка' : 'Внутреннее перемещение'}
+                                    </div>
                                 </div>
                                 <div className="p-4 rounded-lg border bg-muted/20">
                                     <div className="text-sm text-muted-foreground">Всего позиций</div>

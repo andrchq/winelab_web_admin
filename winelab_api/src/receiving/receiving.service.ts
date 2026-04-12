@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { NotificationType } from '@prisma/client';
 
 import { EventsGateway } from '../events/events.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface CreateSessionDto {
@@ -8,6 +10,7 @@ interface CreateSessionDto {
     invoiceNumber?: string;
     supplier?: string;
     type?: string;
+    sourceType?: 'INTERNAL' | 'EXTERNAL';
     items: {
         name: string;
         sku?: string;
@@ -36,6 +39,7 @@ export class ReceivingService {
     constructor(
         private prisma: PrismaService,
         private eventsGateway: EventsGateway,
+        private notificationsService: NotificationsService,
     ) { }
 
     private normalizeScanCode(code?: string | null) {
@@ -45,6 +49,10 @@ export class ReceivingService {
 
     private cleanScanCode(code: string) {
         return code.replace(/^BOX:\s*/i, '').trim();
+    }
+
+    private isExternalSourceSession(session: { sourceType?: string | null }) {
+        return session.sourceType === 'EXTERNAL';
     }
 
     private getReceivingItemInclude() {
@@ -158,6 +166,7 @@ export class ReceivingService {
                 warehouseId: data.warehouseId,
                 invoiceNumber: data.invoiceNumber,
                 supplier: data.supplier,
+                sourceType: data.sourceType || 'INTERNAL',
                 createdById: userId,
                 type: data.type || 'manual',
                 items: {
@@ -172,6 +181,20 @@ export class ReceivingService {
                 },
             },
             include: this.getReceivingSessionInclude(),
+        });
+
+        await this.notificationsService.createForRoles({
+            title: 'Создана приемка',
+            message: `${session.invoiceNumber || session.id}: ${session.warehouse.name}`,
+            type: NotificationType.RECEIVING,
+            link: `/receiving/${session.id}`,
+            roleNames: ['WAREHOUSE'],
+            warehouseId: session.warehouseId,
+            meta: {
+                receivingId: session.id,
+                warehouseId: session.warehouseId,
+                sourceType: session.sourceType,
+            },
         });
 
         this.eventsGateway.server.emit('receiving_update', session);
@@ -223,6 +246,7 @@ export class ReceivingService {
         const linkedShipment = await this.findLinkedShipment(sessionId);
         const isSerialized = item.product?.accountingType !== 'QUANTITY';
         const canBindUnidentifiedAsset = Boolean(item.linkedAssetId && item.linkedAsset?.isUnidentified);
+        const canRegisterExternalBarcode = this.isExternalSourceSession(session);
         let storedCode = data.code;
 
         if (data.code) {
@@ -261,7 +285,7 @@ export class ReceivingService {
 
             const existingAsset = await this.findAssetBySerial(normalizedCode);
             if (!existingAsset) {
-                if (!canBindUnidentifiedAsset) {
+                if (!canBindUnidentifiedAsset && !canRegisterExternalBarcode) {
                     throw new BadRequestException('Этот ШК не найден в системе. Новые ШК можно добавлять только через инвентаризацию или привязку legacy-оборудования в приемке');
                 }
 
@@ -398,12 +422,14 @@ export class ReceivingService {
         }
 
         const linkedShipment = await this.findLinkedShipment(sessionId);
+        const isExternalSource = this.isExternalSourceSession(session);
         const missingReturnItems = session.type === 'RETURN'
             ? session.items.filter((item) => item.linkedAssetId && item.expectedQuantity > 0 && item.scannedQuantity === 0)
             : [];
 
         return this.prisma.$transaction(async (tx) => {
             const results = [];
+            let createdAssetsCount = 0;
             let updatedAssetsCount = 0;
 
             for (const item of session.items) {
@@ -544,7 +570,34 @@ export class ReceivingService {
                         });
 
                         if (!existingAsset) {
-                            throw new BadRequestException('Новые ШК нельзя создавать через приемку. Используйте инвентаризацию');
+                            if (!isExternalSource) {
+                                throw new BadRequestException('Новые ШК нельзя создавать через приемку. Используйте инвентаризацию');
+                            }
+
+                            const createdAsset = await tx.asset.create({
+                                data: {
+                                    serialNumber: scan.code,
+                                    productId: item.productId,
+                                    warehouseId: session.warehouseId,
+                                    storeId: null,
+                                    condition: 'WORKING',
+                                    processStatus: session.type === 'RETURN' ? 'UNSERVICED' : 'AVAILABLE',
+                                },
+                            });
+
+                            await tx.assetHistory.create({
+                                data: {
+                                    assetId: createdAsset.id,
+                                    action: 'RECEIVED_EXTERNAL',
+                                    location: `Warehouse: ${session.warehouseId}`,
+                                    details: `Создано по внешней приемке ${session.id}`,
+                                    toStatus: session.type === 'RETURN' ? 'UNSERVICED' : 'AVAILABLE',
+                                    userId: userId || session.createdById,
+                                },
+                            });
+
+                            createdAssetsCount++;
+                            continue;
                         }
 
                         if (existingAsset.productId !== item.productId) {
@@ -678,11 +731,25 @@ export class ReceivingService {
 
             this.eventsGateway.server.emit('receiving_update', completedSession);
 
+            await this.notificationsService.createForRoles({
+                title: missingReturnItems.length > 0 ? 'Приемка завершена с расхождениями' : 'Приемка завершена',
+                message: `${completedSession.invoiceNumber || completedSession.id}: ${completedSession.warehouse.name}`,
+                type: NotificationType.RECEIVING,
+                link: `/receiving/${completedSession.id}`,
+                roleNames: missingReturnItems.length > 0 ? ['WAREHOUSE', 'MANAGER'] : ['WAREHOUSE'],
+                warehouseId: completedSession.warehouseId,
+                meta: {
+                    receivingId: completedSession.id,
+                    warehouseId: completedSession.warehouseId,
+                    hasDiscrepancy: missingReturnItems.length > 0,
+                },
+            });
+
             return {
                 success: true,
                 session: completedSession,
                 updatedStockCount: results.length,
-                createdAssetsCount: 0,
+                createdAssetsCount,
                 updatedAssetsCount,
             };
         });

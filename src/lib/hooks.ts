@@ -6,6 +6,7 @@ import type {
     Asset,
     Delivery,
     EquipmentCategory,
+    NotificationsResponse,
     Product,
     ReceivingSession,
     Request as ApiRequest,
@@ -148,6 +149,10 @@ export function useProducts() {
     return useList<Product>('/products');
 }
 
+export function useStoreAutoInstallEquipment() {
+    return useList<Product>('/settings/store-auto-install-equipment');
+}
+
 export function useProduct(id: string) {
     return useData<Product>(`/products/${id}`);
 }
@@ -199,6 +204,39 @@ export function useDelivery(id: string) {
     }, [id, result.refetch]);
 
     return result;
+}
+
+export function useNotifications() {
+    const result = useData<NotificationsResponse>('/notifications');
+
+    useEffect(() => {
+        const handleUpdate = () => {
+            if (result.refetch) result.refetch();
+        };
+
+        socket.on('notification:new', handleUpdate);
+        socket.on('notification:read', handleUpdate);
+
+        return () => {
+            socket.off('notification:new', handleUpdate);
+            socket.off('notification:read', handleUpdate);
+        };
+    }, [result.refetch]);
+
+    return {
+        ...result,
+        data: result.data || {
+            items: [],
+            unreadCount: 0,
+            stats: {
+                total: 0,
+                unread: 0,
+                personalUnread: 0,
+                roleUnread: 0,
+                globalUnread: 0,
+            },
+        },
+    };
 }
 
 // Stock

@@ -6,6 +6,10 @@ export interface User {
     name: string;
     phone?: string;
     role: string | { name: string; id: string; description?: string } | null;
+    warehouse?: {
+        id: string;
+        name: string;
+    } | null;
     permissions: string[];
     isActive: boolean;
     createdAt: string;
@@ -96,6 +100,7 @@ export interface Asset {
     id: string;
     serialNumber: string;
     isUnidentified?: boolean;
+    installationConfirmed?: boolean;
     productId: string;
     storeId?: string;
     warehouseId?: string;
@@ -423,6 +428,38 @@ export interface InitialInventoryScan {
     createdAt: string;
 }
 
+export type NotificationScope = 'GLOBAL' | 'ROLE' | 'USER';
+export type NotificationType = 'SYSTEM' | 'REQUEST' | 'DELIVERY' | 'RECEIVING' | 'SHIPMENT' | 'STORE' | 'INVENTORY' | 'SECURITY';
+
+export interface NotificationItem {
+    id: string;
+    title: string;
+    message: string;
+    type: NotificationType;
+    link?: string | null;
+    meta?: Record<string, unknown> | null;
+    createdAt: string;
+    isRead: boolean;
+    audience: {
+        scope: NotificationScope;
+        roles: string[];
+        userId?: string | null;
+        warehouseId?: string | null;
+    };
+}
+
+export interface NotificationsResponse {
+    items: NotificationItem[];
+    unreadCount: number;
+    stats: {
+        total: number;
+        unread: number;
+        personalUnread: number;
+        roleUnread: number;
+        globalUnread: number;
+    };
+}
+
 export interface InitialInventoryEntry {
     id: string;
     sessionId: string;
@@ -471,12 +508,14 @@ export interface StoreEquipment {
     serialNumber?: string;
     comment?: string;      // Комментарий (max 120 символов)
     skipInventory: boolean; // Добавлено без списания со склада
+    installationConfirmed?: boolean;
     createdAt: string;
     createdBy?: string;
 }
 
 // Receiving Types
 export type ReceivingStatus = 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED';
+export type ReceivingSourceType = 'INTERNAL' | 'EXTERNAL';
 
 export interface ReceivingItem {
     id: string;
@@ -493,6 +532,7 @@ export interface ReceivingItem {
         id: string;
         name: string;
         sku: string;
+        accountingType?: 'SERIALIZED' | 'QUANTITY';
     };
     linkedAsset?: {
         id: string;
@@ -510,6 +550,7 @@ export interface ReceivingSession {
     status: ReceivingStatus;
     invoiceNumber?: string;
     supplier?: string;
+    sourceType?: ReceivingSourceType;
     hasDiscrepancy?: boolean;
     discrepancyDetails?: string | null;
     createdById: string;

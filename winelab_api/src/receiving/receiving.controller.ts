@@ -30,6 +30,7 @@ export class ReceivingController {
             invoiceNumber?: string;
             supplier?: string;
             type?: string;
+            sourceType?: 'INTERNAL' | 'EXTERNAL';
             items: {
                 name: string;
                 sku?: string;

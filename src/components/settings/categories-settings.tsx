@@ -118,7 +118,7 @@ export function CategoriesSettings() {
                     <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
                         <SettingsIcon className="h-4 w-4 text-primary" />
                     </div>
-                    Справочник оборудования
+                    Категории оборудования
                 </CardTitle>
                 <CardDescription>Настройка категорий и обязательного оборудования для магазинов</CardDescription>
             </CardHeader>

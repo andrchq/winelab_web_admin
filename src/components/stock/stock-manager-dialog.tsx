@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { Loader2, AlertTriangle } from "lucide-react";
-import { Product, StockItem, Warehouse } from "@/types/api";
+import { Loader2 } from "lucide-react";
+import { Product, StockItem } from "@/types/api";
 import { useWarehouses } from "@/lib/hooks";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -21,26 +21,22 @@ interface StockManagerDialogProps {
 
 export function StockManagerDialog({ open, onOpenChange, product, stockItems, onSuccess }: StockManagerDialogProps) {
     const { data: warehouses } = useWarehouses();
-    const { hasRole } = useAuth();
+    const { hasPermission } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
 
-    // Permission check
-    const canEditDelta = hasRole(['ADMIN', 'MANAGER']);
-    const canEditSettings = hasRole(['ADMIN', 'MANAGER', 'WAREHOUSE']);
+    const canEditSettings = hasPermission(['STOCK_UPDATE']);
 
 
     // Form State
     const [sku, setSku] = useState("");
     const [name, setName] = useState("");
     const [category, setCategory] = useState("");
-    // We map warehouseId -> { quantity, reserved, minQuantity, delta }
     interface WarehouseState {
-        id: string; // warehouseId
+        id: string;
         name: string;
         currentQty: number;
         reserved: number;
         minQuantity: number;
-        delta: number; // for add/remove
     }
     const [warehouseStates, setWarehouseStates] = useState<WarehouseState[]>([]);
 
@@ -60,7 +56,6 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                     currentQty: item?.quantity || 0,
                     reserved: item?.reserved || 0,
                     minQuantity: item?.minQuantity || 0,
-                    delta: 0
                 };
             });
             setWarehouseStates(states);
@@ -72,7 +67,6 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
         setIsLoading(true);
 
         try {
-            // 1. Update Product Details (SKU, Name, Category) if changed
             if (sku !== product.sku || name !== product.name) {
                 await api.patch(`/products/${product.id}`, {
                     sku,
@@ -80,52 +74,23 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                 });
             }
 
-            // 2. Process changes for each warehouse
             await Promise.all(warehouseStates.map(async (state) => {
                 const originalItem = stockItems.find(si => si.warehouseId === state.id);
-                const originalReserved = originalItem?.reserved || 0;
                 const originalMin = originalItem?.minQuantity || 0;
-
-                // Check if any changes
-                const hasDelta = state.delta !== 0;
-                const hasReservedChange = state.reserved !== originalReserved;
                 const hasMinChange = state.minQuantity !== originalMin;
 
-                if (!hasDelta && !hasReservedChange && !hasMinChange) return;
+                if (!hasMinChange) return;
 
-                // Use the backend endpoints
-                // We might need to split this:
-                // - Adjust quantity (delta) -> /stock/adjust or creation
-                // - Update reserved/min -> /stock/:id patch
-
-                // If item doesn't exist, we must create it first if we have positive values
-                // But backend check usually handles upsert if we call a creation-like endpoint?
-                // The current API has `create` (productId, warehouseId, quantity, minQuantity).
-                // And `update` (id, data).
-                // And `adjust` (id, delta).
-
-                // Let's use a robust approach:
-                // A. If item exists:
                 if (originalItem) {
-                    if (hasDelta) {
-                        await api.patch(`/stock/${originalItem.id}/adjust`, { delta: state.delta });
-                    }
-                    if (hasReservedChange || hasMinChange) {
-                        await api.patch(`/stock/${originalItem.id}`, {
-                            reserved: state.reserved,
-                            minQuantity: state.minQuantity
-                        });
-                    }
+                    await api.patch(`/stock/${originalItem.id}`, {
+                        minQuantity: state.minQuantity
+                    });
                 } else {
-                    // B. Item does not exist: Create it
-                    // Base quantity will be 0 + delta.
-                    // If delta is negative for non-existent item, it's an error usually, but let's assume valid input.
-                    if (state.delta !== 0 || state.reserved > 0 || state.minQuantity > 0) {
+                    if (state.minQuantity > 0) {
                         await api.post(`/stock`, {
                             productId: product.id,
                             warehouseId: state.id,
-                            quantity: state.delta, // Correct initial quantity
-                            reserved: state.reserved,
+                            quantity: 0,
                             minQuantity: state.minQuantity
                         });
                     }
@@ -149,7 +114,7 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                 <DialogHeader>
                     <DialogTitle>Управление остатками: {product?.name}</DialogTitle>
                     <DialogDescription>
-                        Редактирование параметров товара и управление остатками
+                        На этом экране можно менять только справочные параметры позиции и минимальный остаток. Фактическое количество и резерв формируются учетными операциями.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -194,16 +159,14 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                                 <tr>
                                     <th className="p-3 text-left font-medium">Склад</th>
                                     <th className="p-3 text-left font-medium w-24">Текущий</th>
-                                    <th className="p-3 text-left font-medium w-40">Изменение (+/-)</th>
                                     <th className="p-3 text-left font-medium w-24">Резерв</th>
                                     <th className="p-3 text-left font-medium w-24">Мин. ост.</th>
-                                    <th className="p-3 text-left font-medium w-24">Итог</th>
+                                    <th className="p-3 text-left font-medium w-24">Доступно</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {warehouseStates.map((state, index) => {
-                                    const available = (state.currentQty + state.delta) - state.reserved;
-                                    const isLow = available < state.minQuantity;
+                                    const available = state.currentQty - state.reserved;
 
                                     return (
                                         <tr key={state.id} className="border-t">
@@ -211,31 +174,9 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                                             <td className="p-3 text-muted-foreground">{state.currentQty}</td>
                                             <td className="p-3">
                                                 <Input
-                                                    type="number"
-                                                    value={state.delta || ""}
-                                                    disabled={!canEditDelta}
-                                                    onChange={(e) => {
-                                                        const val = parseInt(e.target.value) || 0;
-                                                        const newStates = [...warehouseStates];
-                                                        newStates[index].delta = val;
-                                                        setWarehouseStates(newStates);
-                                                    }}
-                                                    placeholder="0"
-                                                    className={state.delta !== 0 ? (state.delta > 0 ? "border-green-500 bg-success/10" : "border-red-500 bg-destructive/10") : ""}
-                                                />
-                                            </td>
-                                            <td className="p-3">
-                                                <Input
-                                                    type="number"
-                                                    min="0"
                                                     value={state.reserved}
-                                                    disabled={!canEditSettings}
-                                                    onChange={(e) => {
-                                                        const val = Math.max(0, parseInt(e.target.value) || 0);
-                                                        const newStates = [...warehouseStates];
-                                                        newStates[index].reserved = val;
-                                                        setWarehouseStates(newStates);
-                                                    }}
+                                                    disabled
+                                                    className="bg-muted"
                                                 />
                                             </td>
                                             <td className="p-3">
@@ -254,8 +195,8 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                                             </td>
                                             <td className="p-3">
                                                 <div className="flex flex-col text-xs">
-                                                    <span className="font-semibold">{state.currentQty + state.delta} всего</span>
-                                                    <span className={available < 0 ? "text-destructive" : (isLow ? "text-warning" : "text-success")}>
+                                                    <span className="font-semibold">{available}</span>
+                                                    <span className={available < state.minQuantity ? "text-warning" : "text-success"}>
                                                         {available} доступно
                                                     </span>
                                                 </div>

@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, ShipmentStatus } from '@prisma/client';
+import { NotificationType, Prisma, ShipmentStatus } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { YandexClaimRequest, YandexDeliveryService } from '../deliveries/yandex-delivery.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 type CreateShipmentItemDto = {
   productId?: string;
@@ -70,6 +71,7 @@ export class ShipmentsService {
   constructor(
     private prisma: PrismaService,
     private yandexDeliveryService: YandexDeliveryService,
+    private notificationsService: NotificationsService,
   ) {}
 
   private async syncRequestStatusForShipment(
@@ -482,6 +484,7 @@ export class ShipmentsService {
           status: 'DRAFT',
           invoiceNumber: shipment.invoiceNumber || `Отгрузка ${shipment.id}`,
           supplier: shipment.warehouse.name,
+          sourceType: 'INTERNAL',
           createdById: userId,
           type: shipment.type,
           items: {
@@ -510,6 +513,7 @@ export class ShipmentsService {
     });
 
     await this.syncRequestStatusForShipment(tx, updatedShipment.requestId, ShipmentStatus.SHIPPED);
+    return updatedShipment;
   }
 
   async findAll(filters?: { status?: ShipmentStatus }) {
@@ -786,7 +790,7 @@ export class ShipmentsService {
     const shipment = await this.ensureShipmentExists(shipmentId);
 
     if (shipment.status === ShipmentStatus.SHIPPED || shipment.status === ShipmentStatus.DELIVERED) {
-      throw new BadRequestException('РќРµР»СЊР·СЏ РґРѕР±Р°РІР»СЏС‚СЊ СЂР°СЃС…РѕРґРЅРёРєРё РІ СѓР¶Рµ Р·Р°РІРµСЂС€РµРЅРЅСѓСЋ РѕС‚РіСЂСѓР·РєСѓ');
+      throw new BadRequestException('Нельзя добавлять расходники в уже завершенную отгрузку');
     }
 
     if (shipment.warehouseId !== warehouseId) {
@@ -951,9 +955,26 @@ export class ShipmentsService {
       throw new BadRequestException('Нет собранных позиций');
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      await this.commitShipmentInternal(tx, shipment, userId);
+    const committedShipment = await this.prisma.$transaction(async (tx) => {
+      return this.commitShipmentInternal(tx, shipment, userId);
     });
+
+    if (shipment.destinationType === 'warehouse' && shipment.destinationId && committedShipment.linkedReceivingId) {
+      await this.notificationsService.createForRoles({
+        title: 'Создана приемка',
+        message: `${shipment.invoiceNumber || committedShipment.linkedReceivingId}: ${shipment.destinationName || 'Склад-получатель'}`,
+        type: NotificationType.RECEIVING,
+        link: `/receiving/${committedShipment.linkedReceivingId}`,
+        roleNames: ['WAREHOUSE'],
+        warehouseId: shipment.destinationId,
+        meta: {
+          receivingId: committedShipment.linkedReceivingId,
+          warehouseId: shipment.destinationId,
+          shipmentId: shipment.id,
+          sourceType: 'INTERNAL',
+        },
+      });
+    }
 
     return this.findById(id);
   }

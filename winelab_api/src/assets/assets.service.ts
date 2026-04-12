@@ -183,7 +183,10 @@ export class AssetsService {
 
     await this.prisma.asset.update({
       where: { id },
-      data: { processStatus: AssetProcess.INSTALLED },
+      data: {
+        processStatus: AssetProcess.INSTALLED,
+        installationConfirmed: true,
+      },
     });
 
     await this.addHistory(id, 'Установлено');
@@ -315,6 +318,7 @@ export class AssetsService {
           status: 'IN_TRANSIT',
           type: 'RETURN',
           supplier: store.name,
+          sourceType: 'INTERNAL',
           createdById: userId,
         },
       });

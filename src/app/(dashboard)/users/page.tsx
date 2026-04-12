@@ -50,12 +50,37 @@ export default function UsersPage() {
         }
     };
 
-    const handleSave = async (data: any) => {
+    const handleSave = async (data: {
+        name: string;
+        email: string;
+        password?: string;
+        phone?: string;
+        roleId: string;
+        warehouseId?: string;
+        isActive: boolean;
+    }) => {
+        const normalizedPayload = {
+            name: data.name,
+            email: data.email,
+            phone: data.phone?.trim() || undefined,
+            password: data.password?.trim() || undefined,
+            roleId: data.roleId || undefined,
+            warehouseId: data.warehouseId || undefined,
+            isActive: data.isActive,
+        };
+
         try {
             if (selectedUser) {
-                await api.patch(`/users/${selectedUser.id}`, data);
+                await api.patch(`/users/${selectedUser.id}`, normalizedPayload);
             } else {
-                await api.post("/users", data);
+                await api.post("/users", {
+                    name: normalizedPayload.name,
+                    email: normalizedPayload.email,
+                    phone: normalizedPayload.phone,
+                    password: normalizedPayload.password,
+                    roleId: normalizedPayload.roleId,
+                    warehouseId: normalizedPayload.warehouseId,
+                });
             }
             refetch();
         } catch (error) {
@@ -71,7 +96,7 @@ export default function UsersPage() {
         const total = users.length;
         const active = users.filter(u => u.isActive).length;
         // Check if role is object or string to be safe
-        const getRoleName = (u: any) => {
+        const getRoleName = (u: User) => {
             if (!u.role) return null;
             return typeof u.role === 'object' ? u.role.name : u.role;
         };
@@ -196,7 +221,7 @@ export default function UsersPage() {
                                         </thead>
                                         <tbody>
                                             {filteredUsers.map((user, index) => {
-                                                const roleName = user.role && typeof user.role === 'object' ? (user.role as any).name : user.role;
+                                                const roleName = user.role && typeof user.role === 'object' ? user.role.name : user.role;
                                                 const role = roleName ? roleConfig[roleName] : null;
                                                 return (
                                                     <tr
@@ -228,7 +253,13 @@ export default function UsersPage() {
                                                                 {user.phone && (
                                                                     <p className="text-sm text-muted-foreground flex items-center gap-1.5">
                                                                         <Phone className="h-3.5 w-3.5" />
-                                                                        {user.phone}
+                                                                {user.phone}
+                                                                    </p>
+                                                                )}
+                                                                {roleName === 'WAREHOUSE' && user.warehouse && (
+                                                                    <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                                                                        <WarehouseIcon className="h-3.5 w-3.5" />
+                                                                        {user.warehouse.name}
                                                                     </p>
                                                                 )}
                                                             </div>

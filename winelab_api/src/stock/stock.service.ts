@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ProductAccountingType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -58,7 +59,23 @@ export class StockService {
         const minQuantity = data.minQuantity ?? 0;
         const reserved = data.reserved ?? 0;
 
-        // Check if exists
+        if (data.quantity !== 0 || reserved !== 0) {
+            throw new BadRequestException('Ручное внесение количества и резерва отключено. Используйте приемку, инвентаризацию и отгрузки.');
+        }
+
+        const product = await this.prisma.product.findUnique({
+            where: { id: data.productId },
+            select: { accountingType: true },
+        });
+
+        if (!product) {
+            throw new NotFoundException(`Product with ID ${data.productId} not found`);
+        }
+
+        if (product.accountingType !== ProductAccountingType.QUANTITY) {
+            throw new BadRequestException('Ручная привязка доступна только для количественных позиций.');
+        }
+
         const existing = await this.prisma.stockItem.findUnique({
             where: {
                 productId_warehouseId: {
@@ -69,37 +86,17 @@ export class StockService {
         });
 
         if (existing) {
-            const nextQuantity = existing.quantity + data.quantity;
-            const nextReserved = data.reserved ?? existing.reserved;
-            const nextMinQuantity = data.minQuantity ?? existing.minQuantity;
-
-            this.validateSnapshot(nextQuantity, nextReserved, nextMinQuantity);
-
-            // Update quantity if exists
-            return this.prisma.stockItem.update({
-                where: { id: existing.id },
-                data: {
-                    quantity: { increment: data.quantity },
-                    reserved: nextReserved,
-                    minQuantity: nextMinQuantity,
-                },
-                include: {
-                    product: {
-                        include: { category: true }
-                    },
-                    warehouse: true
-                },
-            });
+            throw new BadRequestException('Позиция уже привязана к этому складу.');
         }
 
-        this.validateSnapshot(data.quantity, reserved, minQuantity);
+        this.validateSnapshot(0, 0, minQuantity);
 
         return this.prisma.stockItem.create({
             data: {
                 productId: data.productId,
                 warehouseId: data.warehouseId,
-                quantity: data.quantity,
-                reserved,
+                quantity: 0,
+                reserved: 0,
                 minQuantity,
             },
             include: {
@@ -113,15 +110,20 @@ export class StockService {
 
     async update(id: string, data: { quantity?: number; minQuantity?: number; reserved?: number }) {
         const existing = await this.findOne(id);
-        const nextQuantity = data.quantity ?? existing.quantity;
-        const nextReserved = data.reserved ?? existing.reserved;
+
+        if (data.quantity !== undefined || data.reserved !== undefined) {
+            throw new BadRequestException('Ручное изменение количества и резерва отключено. Можно менять только минимальный остаток.');
+        }
+
+        const nextQuantity = existing.quantity;
+        const nextReserved = existing.reserved;
         const nextMinQuantity = data.minQuantity ?? existing.minQuantity;
 
         this.validateSnapshot(nextQuantity, nextReserved, nextMinQuantity);
 
         return this.prisma.stockItem.update({
             where: { id },
-            data,
+            data: { minQuantity: nextMinQuantity },
             include: {
                 product: {
                     include: { category: true }
@@ -132,26 +134,16 @@ export class StockService {
     }
 
     async adjust(id: string, delta: number) {
-        const existing = await this.findOne(id);
-        const nextQuantity = existing.quantity + delta;
-
-        this.validateSnapshot(nextQuantity, existing.reserved, existing.minQuantity);
-
-        return this.prisma.stockItem.update({
-            where: { id },
-            data: {
-                quantity: { increment: delta },
-            },
-            include: {
-                product: {
-                    include: { category: true }
-                },
-                warehouse: true
-            },
-        });
+        throw new BadRequestException('Ручное изменение количества отключено. Используйте приемку, инвентаризацию и отгрузки.');
     }
 
     async delete(id: string) {
+        const existing = await this.findOne(id);
+
+        if (existing.quantity !== 0 || existing.reserved !== 0) {
+            throw new BadRequestException('Нельзя удалить складскую позицию с ненулевым остатком или резервом.');
+        }
+
         return this.prisma.stockItem.delete({
             where: { id },
         });

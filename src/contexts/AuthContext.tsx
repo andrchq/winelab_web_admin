@@ -41,6 +41,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [user]);
 
     useEffect(() => {
+        if (!user) {
+            return;
+        }
+
+        const identify = () => {
+            const token = getAuthToken();
+            if (!token) {
+                return;
+            }
+
+            socket.emit('auth:identify', { token });
+        };
+
+        if (socket.connected) {
+            identify();
+        }
+
+        socket.on('connect', identify);
+        return () => {
+            socket.off('connect', identify);
+        };
+    }, [user]);
+
+    useEffect(() => {
         const init = async () => {
             initializeAuth();
 

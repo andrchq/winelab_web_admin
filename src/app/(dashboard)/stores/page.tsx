@@ -61,7 +61,19 @@ const checkStoreCompleteness = (store: any, categories: any[]) => {
     if (!store.providerIp1 && !store.providerIp2) missingMandatory.push("IP Провайдера");
 
     // Check for missing mandatory equipment
-    const storeEquipment: StoreEquipment[] = store.equipment || [];
+    const storeEquipment: StoreEquipment[] = (store.assets || [])
+        .filter((asset: any) => asset.processStatus === 'INSTALLED' && asset.product?.category)
+        .map((asset: any) => ({
+            id: asset.id,
+            storeId: store.id,
+            assetId: asset.id,
+            category: asset.product.category,
+            productName: asset.product.name,
+            serialNumber: asset.serialNumber,
+            skipInventory: false,
+            installationConfirmed: asset.installationConfirmed,
+            createdAt: asset.createdAt || new Date().toISOString(),
+        }));
     const missingEquipment = getMissingEquipment(storeEquipment, categories);
     if (missingEquipment.length > 0) {
         // Add a summary indicator instead of listing all 14 items

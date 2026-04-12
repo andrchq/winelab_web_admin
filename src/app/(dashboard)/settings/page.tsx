@@ -1,224 +1,135 @@
+"use client";
 
-import { Settings, Key, Shield, Bell, Globe, Save, CheckCircle2, Plug, ExternalLink, ListTree } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { FolderTree, LockKeyhole, Settings2, Shield } from "lucide-react";
+
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import {
+    SETTINGS_MODULES,
+    SETTINGS_ROLE_DESCRIPTIONS,
+    SETTINGS_ROLE_LABELS,
+    SETTINGS_SECTIONS,
+    canAccessSettingsModule,
+    resolveSettingsRole,
+} from "@/components/settings/settings-registry";
 import { Badge } from "@/components/ui/badge";
-import Link from "next/link";
+import { Card, CardDescription, CardHeader, CardTitle, StatCard } from "@/components/ui/card";
+import { useAuth } from "@/contexts/AuthContext";
+
+const TEXT = {
+    title: "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438",
+    description:
+        "\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u0430 \u0441\u043e\u0431\u0440\u0430\u043d\u0430 \u0438\u0437 inline-\u043c\u043e\u0434\u0443\u043b\u0435\u0439 \u0441 \u0440\u0435\u0430\u043b\u044c\u043d\u043e\u0439 API-\u043b\u043e\u0433\u0438\u043a\u043e\u0439. \u0410\u0434\u043c\u0438\u043d \u0432\u0438\u0434\u0438\u0442 \u0432\u0435\u0441\u044c \u043a\u043e\u043d\u0442\u0443\u0440, \u043e\u0441\u0442\u0430\u043b\u044c\u043d\u044b\u0435 \u0440\u043e\u043b\u0438 \u0442\u043e\u043b\u044c\u043a\u043e \u0441\u0432\u043e\u0438 \u0437\u043e\u043d\u044b.",
+    currentRole: "\u0422\u0435\u043a\u0443\u0449\u0430\u044f \u0440\u043e\u043b\u044c",
+    availableModules: "\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u043e \u043c\u043e\u0434\u0443\u043b\u0435\u0439",
+    hiddenModules: "\u0421\u043a\u0440\u044b\u0442\u043e \u043f\u043e \u0440\u043e\u043b\u0438",
+    availableSections: "\u0413\u0440\u0443\u043f\u043f \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043a",
+    availableModulesSubtitle: "\u041c\u043e\u0434\u0443\u043b\u0438, \u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u043c\u043e\u0436\u043d\u043e \u043c\u0435\u043d\u044f\u0442\u044c \u0438\u0437 \u044d\u0442\u043e\u0439 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b",
+    hiddenAdminSubtitle: "\u0410\u0434\u043c\u0438\u043d \u0432\u0438\u0434\u0438\u0442 \u0432\u0441\u0435 \u043c\u043e\u0434\u0443\u043b\u0438",
+    hiddenRoleSubtitle: "\u041d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e \u0434\u043b\u044f \u0442\u0435\u043a\u0443\u0449\u0435\u0439 \u0440\u043e\u043b\u0438",
+    sectionSubtitle: "\u041c\u043e\u0434\u0443\u043b\u0438 \u0441 \u0440\u0435\u0430\u043b\u044c\u043d\u044b\u043c\u0438 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f\u043c\u0438",
+    roleAccess: "\u0414\u043e\u0441\u0442\u0443\u043f",
+    adminAccess: "\u0412\u0441\u0435 \u0440\u043e\u043b\u0438 \u0447\u0435\u0440\u0435\u0437 Admin",
+    noAccessTitle: "\u0414\u043b\u044f \u044d\u0442\u043e\u0439 \u0440\u043e\u043b\u0438 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442 \u043e\u0442\u043a\u0440\u044b\u0442\u044b\u0445 inline-\u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043a",
+    noAccessDescription:
+        "\u041a\u043e\u0433\u0434\u0430 \u043f\u043e\u044f\u0432\u044f\u0442\u0441\u044f \u0440\u0435\u0430\u043b\u044c\u043d\u044b\u0435 \u043c\u043e\u0434\u0443\u043b\u0438 \u0434\u043b\u044f \u0432\u0430\u0448\u0435\u0439 \u0440\u043e\u043b\u0438, \u043e\u043d\u0438 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0430\u0442\u0441\u044f \u0432 \u044d\u0442\u043e\u0442 \u044d\u043a\u0440\u0430\u043d \u0447\u0435\u0440\u0435\u0437 \u043e\u0431\u0449\u0438\u0439 \u0440\u0435\u0435\u0441\u0442\u0440 \u0431\u0435\u0437 \u043f\u0435\u0440\u0435\u0441\u0431\u043e\u0440\u043a\u0438 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b.",
+};
 
 export default function SettingsPage() {
+    const { user } = useAuth();
+    const roleName = user?.role ? (typeof user.role === "object" ? user.role.name : user.role) : null;
+    const currentRole = resolveSettingsRole(roleName);
+    const isAdmin = currentRole === "ADMIN";
+
+    const visibleModules = SETTINGS_MODULES.filter((module) => canAccessSettingsModule(currentRole, module.roles));
+    const hiddenModulesCount = SETTINGS_MODULES.length - visibleModules.length;
+
+    const visibleSections = SETTINGS_SECTIONS.map((section) => ({
+        ...section,
+        modules: visibleModules.filter((module) => module.sectionId === section.id),
+    })).filter((section) => section.modules.length > 0);
+
     return (
-        <div className="p-4 md:p-6 h-full">
-            <div className="space-y-6 max-w-4xl mx-auto">
-                {/* Page Header */}
-                <div>
-                    <h1 className="text-2xl font-bold">Настройки</h1>
-                    <p className="text-sm text-muted-foreground mt-1">Конфигурация системы и интеграций</p>
+        <ProtectedRoute>
+            <div className="h-full p-6">
+                <div className="space-y-6">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <h1 className="text-2xl font-bold">{TEXT.title}</h1>
+                            <p className="mt-1 text-sm text-muted-foreground">{TEXT.description}</p>
+                        </div>
+                        <Badge variant={isAdmin ? "destructive" : "secondary"} className="h-10 w-fit px-4 text-sm">
+                            <Shield className="h-4 w-4" />
+                            {SETTINGS_ROLE_LABELS[currentRole]}
+                        </Badge>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-4 animate-stagger">
+                        <StatCard
+                            title={TEXT.currentRole}
+                            value={SETTINGS_ROLE_LABELS[currentRole]}
+                            subtitle={SETTINGS_ROLE_DESCRIPTIONS[currentRole]}
+                            icon={<Shield className="h-5 w-5" />}
+                            status={isAdmin ? "accent" : "default"}
+                        />
+                        <StatCard
+                            title={TEXT.availableModules}
+                            value={visibleModules.length}
+                            subtitle={TEXT.availableModulesSubtitle}
+                            icon={<Settings2 className="h-5 w-5" />}
+                            status="success"
+                        />
+                        <StatCard
+                            title={TEXT.hiddenModules}
+                            value={hiddenModulesCount}
+                            subtitle={isAdmin ? TEXT.hiddenAdminSubtitle : TEXT.hiddenRoleSubtitle}
+                            icon={<LockKeyhole className="h-5 w-5" />}
+                            status={isAdmin ? "default" : "warning"}
+                        />
+                        <StatCard
+                            title={TEXT.availableSections}
+                            value={visibleSections.length}
+                            subtitle={TEXT.sectionSubtitle}
+                            icon={<FolderTree className="h-5 w-5" />}
+                            status="default"
+                        />
+                    </div>
+
+                    {visibleSections.length === 0 ? (
+                        <Card variant="elevated">
+                            <CardHeader>
+                                <CardTitle>{TEXT.noAccessTitle}</CardTitle>
+                                <CardDescription>{TEXT.noAccessDescription}</CardDescription>
+                            </CardHeader>
+                        </Card>
+                    ) : (
+                        visibleSections.map((section) => (
+                            <div key={section.id} className="space-y-4">
+                                <div>
+                                    <h2 className="text-lg font-semibold">{section.title}</h2>
+                                    <p className="mt-1 text-sm text-muted-foreground">{section.description}</p>
+                                </div>
+
+                                <div className="space-y-4">
+                                    {section.modules.map((module) => {
+                                        const ModuleComponent = module.Component;
+
+                                        return (
+                                            <div key={module.id} className="space-y-2">
+                                                <div className="flex justify-end">
+                                                    <Badge variant="outline">
+                                                        {TEXT.roleAccess}: {isAdmin ? TEXT.adminAccess : module.roles.map((role) => SETTINGS_ROLE_LABELS[role]).join(", ")}
+                                                    </Badge>
+                                                </div>
+                                                <ModuleComponent />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
-
-                {/* Integrations */}
-                <Card variant="elevated">
-                    <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                                <Globe className="h-4 w-4 text-primary" />
-                            </div>
-                            Интеграции
-                        </CardTitle>
-                        <CardDescription>Настройка внешних сервисов</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors">
-                            <div className="flex items-center gap-4">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-warning/10">
-                                    <span className="text-warning font-bold text-lg">Я</span>
-                                </div>
-                                <div>
-                                    <p className="font-medium">Яндекс.Доставка</p>
-                                    <p className="text-sm text-muted-foreground">API для создания и отслеживания доставок</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <Badge variant="success" dot>Подключено</Badge>
-                                <Button variant="outline" size="sm">
-                                    <Settings className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors">
-                            <div className="flex items-center gap-4">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-info/10">
-                                    <span className="text-info font-bold text-lg">M</span>
-                                </div>
-                                <div>
-                                    <p className="font-medium">Major Express</p>
-                                    <p className="text-sm text-muted-foreground">Альтернативный провайдер доставки</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <Badge variant="secondary">Не настроено</Badge>
-                                <Button variant="outline" size="sm">
-                                    <Plug className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors">
-                            <div className="flex items-center gap-4">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10">
-                                    <span className="text-accent font-bold text-lg">TG</span>
-                                </div>
-                                <div>
-                                    <p className="font-medium">Telegram Bot</p>
-                                    <p className="text-sm text-muted-foreground">Уведомления и approve-login</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <Badge variant="success" dot>Подключено</Badge>
-                                <Button variant="outline" size="sm">
-                                    <Settings className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* API Keys */}
-                <Card variant="elevated">
-                    <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-lg bg-warning/10 flex items-center justify-center">
-                                <Key className="h-4 w-4 text-warning" />
-                            </div>
-                            API Ключи
-                        </CardTitle>
-                        <CardDescription>Управление секретами интеграций</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Yandex Delivery API Key</label>
-                            <div className="flex gap-2">
-                                <Input type="password" value="••••••••••••••••" readOnly className="font-mono" />
-                                <Button variant="outline">Изменить</Button>
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Telegram Bot Token</label>
-                            <div className="flex gap-2">
-                                <Input type="password" value="••••••••••••••••" readOnly className="font-mono" />
-                                <Button variant="outline">Изменить</Button>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Security */}
-                <Card variant="elevated">
-                    <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-lg bg-success/10 flex items-center justify-center">
-                                <Shield className="h-4 w-4 text-success" />
-                            </div>
-                            Безопасность
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/20">
-                            <div className="flex items-center gap-3">
-                                <CheckCircle2 className="h-5 w-5 text-success" />
-                                <div>
-                                    <p className="font-medium">Двухфакторная аутентификация</p>
-                                    <p className="text-sm text-muted-foreground">Обязательна для администраторов</p>
-                                </div>
-                            </div>
-                            <Badge variant="success" dot>Включено</Badge>
-                        </div>
-                        <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/20">
-                            <div className="flex items-center gap-3">
-                                <CheckCircle2 className="h-5 w-5 text-success" />
-                                <div>
-                                    <p className="font-medium">Rate Limiting</p>
-                                    <p className="text-sm text-muted-foreground">Защита от brute force</p>
-                                </div>
-                            </div>
-                            <Badge variant="success" dot>Активно</Badge>
-                        </div>
-                        <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/20">
-                            <div className="flex items-center gap-3">
-                                <ExternalLink className="h-5 w-5 text-muted-foreground" />
-                                <div>
-                                    <p className="font-medium">Аудит логи</p>
-                                    <p className="text-sm text-muted-foreground">Хранение 90 дней</p>
-                                </div>
-                            </div>
-                            <Button variant="outline" size="sm">Просмотреть</Button>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Notifications */}
-                <Card variant="elevated">
-                    <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-lg bg-info/10 flex items-center justify-center">
-                                <Bell className="h-4 w-4 text-info" />
-                            </div>
-                            Уведомления
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/20">
-                            <div>
-                                <p className="font-medium">SLA алерты</p>
-                                <p className="text-sm text-muted-foreground">При просрочке доставки/установки</p>
-                            </div>
-                            <Badge variant="success" dot>Включено</Badge>
-                        </div>
-                        <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/20">
-                            <div>
-                                <p className="font-medium">Низкий остаток</p>
-                                <p className="text-sm text-muted-foreground">Когда остаток ниже минимума</p>
-                            </div>
-                            <Badge variant="success" dot>Включено</Badge>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Equipment */}
-                <Card variant="elevated">
-                    <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                                <Settings className="h-4 w-4 text-primary" />
-                            </div>
-                            Оборудование
-                        </CardTitle>
-                        <CardDescription>Справочники и параметры оборудования</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors">
-                            <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-full bg-background flex items-center justify-center border border-border">
-                                    <ListTree className="h-5 w-5 text-muted-foreground" />
-                                </div>
-                                <div>
-                                    <p className="font-medium">Категории оборудования</p>
-                                    <p className="text-sm text-muted-foreground">Управление типами устройств</p>
-                                </div>
-                            </div>
-                            <Link href="/settings/equipment-categories">
-                                <Button variant="outline">Настроить</Button>
-                            </Link>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Button variant="gradient" size="lg" className="w-full">
-                    <Save className="h-4 w-4" />
-                    Сохранить изменения
-                </Button>
             </div>
-        </div>
+        </ProtectedRoute>
     );
 }

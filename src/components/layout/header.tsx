@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useTSDMode } from "@/contexts/TSDModeContext";
+import { useNotifications } from "@/lib/hooks";
 
 const roleLabels: Record<string, string> = {
     ADMIN: 'Администратор',
@@ -30,6 +31,7 @@ export function Header() {
     const [showUserMenu, setShowUserMenu] = useState(false);
     const { user, logout, isAuthenticated } = useAuth();
     const router = useRouter();
+    const { data: notifications } = useNotifications();
 
     const toggleTheme = () => {
         setIsDark(!isDark);
@@ -86,12 +88,14 @@ export function Header() {
                     size="icon"
                     className="relative text-muted-foreground hover:text-foreground h-12 w-12"
                     onClick={() => router.push('/notifications')}
+                    title={notifications.unreadCount > 0 ? `Непрочитанные: ${notifications.unreadCount}` : 'Уведомления'}
                 >
                     <Bell className="h-6 w-6" />
-                    <span className="absolute right-3 top-3 flex h-2.5 w-2.5">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75"></span>
-                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary"></span>
-                    </span>
+                    {notifications.unreadCount > 0 && (
+                        <span className="absolute -right-0.5 -top-0.5 min-w-5 rounded-full bg-primary px-1 py-0.5 text-[10px] font-bold leading-none text-primary-foreground">
+                            {notifications.unreadCount > 99 ? '99+' : notifications.unreadCount}
+                        </span>
+                    )}
                 </Button>
 
                 {/* User Menu */}

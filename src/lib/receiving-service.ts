@@ -1,6 +1,8 @@
 import { api } from "./api";
 import { InvoiceItem } from "./file-parser";
 
+export type ReceivingSourceType = 'INTERNAL' | 'EXTERNAL';
+
 export interface ReceivingItem {
     id: string;
     name: string;
@@ -20,6 +22,7 @@ export interface ReceivingItem {
         id: string;
         name: string;
         sku: string;
+        accountingType?: 'SERIALIZED' | 'QUANTITY';
         category?: {
             code: string;
             name: string;
@@ -44,6 +47,7 @@ export interface ReceivingSession {
     completedAt?: string;
     invoiceNumber?: string;
     supplier?: string;
+    sourceType?: ReceivingSourceType;
     type?: 'manual' | 'file' | 'RETURN';
     hasDiscrepancy?: boolean;
     discrepancyDetails?: string | null;
@@ -79,6 +83,7 @@ export const receivingService = {
         invoiceNumber?: string;
         supplier?: string;
         type?: 'manual' | 'file';
+        sourceType?: ReceivingSourceType;
     }) => {
         // Map frontend data structure to backend expected DTO
         const payload = {
@@ -86,6 +91,7 @@ export const receivingService = {
             invoiceNumber: data.invoiceNumber,
             supplier: data.supplier,
             type: data.type,
+            sourceType: data.sourceType,
             items: data.items.map(item => ({
                 name: item.originalName,
                 sku: item.sku,

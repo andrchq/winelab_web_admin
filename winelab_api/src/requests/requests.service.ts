@@ -1,10 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { RequestStatus, RequestPriority } from '@prisma/client';
+import { NotificationType, RequestStatus, RequestPriority } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class RequestsService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private notificationsService: NotificationsService,
+    ) { }
 
     async findAll(filters?: { status?: RequestStatus; priority?: RequestPriority }) {
         return this.prisma.request.findMany({
@@ -49,7 +53,27 @@ export class RequestsService {
         creatorId: string;
         priority?: RequestPriority;
     }) {
-        return this.prisma.request.create({ data });
+        const request = await this.prisma.request.create({
+            data,
+            include: {
+                store: { select: { name: true } },
+            },
+        });
+
+        await this.notificationsService.createForRoles({
+            title: 'Новая заявка',
+            message: `${request.title} (${request.store?.name || 'без магазина'})`,
+            type: NotificationType.REQUEST,
+            link: `/requests/${request.id}`,
+            roleNames: ['MANAGER', 'WAREHOUSE'],
+            meta: {
+                requestId: request.id,
+                storeId: request.storeId,
+                priority: request.priority,
+            },
+        });
+
+        return request;
     }
 
     async updateStatus(id: string, status: RequestStatus, actorId: string, assigneeId?: string) {
@@ -73,7 +97,7 @@ export class RequestsService {
             CANCELLED: 'Отменена',
         };
 
-        return this.prisma.$transaction(async (tx) => {
+        const updatedRequest = await this.prisma.$transaction(async (tx) => {
             const updatedRequest = await tx.request.update({
                 where: { id },
                 data: { status, assigneeId: nextAssigneeId },
@@ -100,20 +124,72 @@ export class RequestsService {
 
             return updatedRequest;
         });
+
+        if (updatedRequest.creatorId !== actorId) {
+            await this.notificationsService.createForUser({
+                userId: updatedRequest.creatorId,
+                title: 'Статус заявки обновлен',
+                message: `${updatedRequest.title}: ${statusLabels[status]}`,
+                type: NotificationType.REQUEST,
+                link: `/requests/${updatedRequest.id}`,
+                meta: {
+                    requestId: updatedRequest.id,
+                    status,
+                },
+            });
+        }
+
+        if (updatedRequest.assigneeId && updatedRequest.assigneeId !== actorId) {
+            await this.notificationsService.createForUser({
+                userId: updatedRequest.assigneeId,
+                title: 'Заявка назначена вам',
+                message: `${updatedRequest.title} переведена в статус "${statusLabels[status]}"`,
+                type: NotificationType.REQUEST,
+                link: `/requests/${updatedRequest.id}`,
+                meta: {
+                    requestId: updatedRequest.id,
+                    status,
+                },
+            });
+        }
+
+        return updatedRequest;
     }
 
     async addComment(requestId: string, userId: string, text: string) {
-        await this.findById(requestId);
+        const request = await this.findById(requestId);
         const normalizedText = text.trim();
 
         if (!normalizedText) {
             throw new BadRequestException('Комментарий не может быть пустым');
         }
 
-        return this.prisma.comment.create({
+        const comment = await this.prisma.comment.create({
             data: { requestId, userId, text: normalizedText },
             include: { user: { select: { name: true, role: true } } },
         });
+
+        const recipients = new Set<string>();
+        if (request.creatorId !== userId) recipients.add(request.creatorId);
+        if (request.assigneeId && request.assigneeId !== userId) recipients.add(request.assigneeId);
+
+        await Promise.all(
+            Array.from(recipients).map((recipientId) =>
+                this.notificationsService.createForUser({
+                    userId: recipientId,
+                    title: 'Новый комментарий в заявке',
+                    message: `${request.title}: ${normalizedText.slice(0, 120)}`,
+                    type: NotificationType.REQUEST,
+                    link: `/requests/${request.id}`,
+                    meta: {
+                        requestId: request.id,
+                        commentId: comment.id,
+                    },
+                }),
+            ),
+        );
+
+        return comment;
     }
 
     async addAsset(requestId: string, assetId: string, notes?: string) {

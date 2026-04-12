@@ -116,6 +116,7 @@ export default function ReceivingDashboard() {
     const progressPercent = Math.min(100, Math.round((totalScanned / Math.max(totalExpected, 1)) * 100));
     const unmappedScannedItems = session.items.filter((item) => !item.productId && item.scannedQuantity > 0);
     const hasBlockingIssues = unmappedScannedItems.length > 0;
+    const isExternalSource = session.sourceType === "EXTERNAL";
     const pendingBindingItems = session.items.filter((item) => item.linkedAsset?.isUnidentified && item.scannedQuantity === 0);
     const regularItems = session.items.filter((item) => !(item.linkedAsset?.isUnidentified && item.scannedQuantity === 0));
 
@@ -189,6 +190,11 @@ export default function ReceivingDashboard() {
                                     <ArrowRight className="h-4 w-4 text-muted-foreground" />
                                     <span>{session.warehouse?.name || "Склад"}</span>
                                 </div>
+                                <div className="mt-2 flex items-center justify-end gap-2">
+                                    <Badge variant={isExternalSource ? "secondary" : "outline"}>
+                                        {isExternalSource ? "Внешняя приемка" : "Внутренний источник"}
+                                    </Badge>
+                                </div>
                                 <div className="text-xs text-muted-foreground">
                                     {session.status === "DRAFT"
                                         ? "Черновик"
@@ -240,6 +246,14 @@ export default function ReceivingDashboard() {
                             <Card className="border-amber-300 bg-amber-50">
                                 <CardContent className="p-4 text-sm text-amber-900">
                                     В блоке ниже есть legacy-оборудование без реального ШК. Открой позицию и отсканируй фактический ШК устройства. После завершения приемки он будет привязан к этому asset и позиция станет обычной.
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {isExternalSource && (
+                            <Card className="border-blue-300 bg-blue-50">
+                                <CardContent className="p-4 text-sm text-blue-900">
+                                    Это внешняя приемка. Новые серийные номера можно сканировать прямо в этой сессии: при завершении приемки система создаст оборудование с этими ШК на выбранном складе. Количественные позиции по-прежнему принимаются количеством без обязательного поштучного сканирования.
                                 </CardContent>
                             </Card>
                         )}

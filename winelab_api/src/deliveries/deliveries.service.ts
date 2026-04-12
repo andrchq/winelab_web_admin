@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { AssetProcess, DeliveryStatus, Prisma } from '@prisma/client';
+import { AssetProcess, DeliveryStatus, NotificationType, Prisma } from '@prisma/client';
 
 import { EventsGateway } from '../events/events.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { YandexDeliveryService } from './yandex-delivery.service';
 
@@ -12,6 +13,7 @@ export class DeliveriesService {
     constructor(
         private prisma: PrismaService,
         private eventsGateway: EventsGateway,
+        private notificationsService: NotificationsService,
         private yandexDeliveryService: YandexDeliveryService,
     ) {}
 
@@ -261,6 +263,18 @@ export class DeliveriesService {
 
         await this.addEvent(delivery.id, 'Заказ доставки создан');
         await this.syncRequestStatusForDelivery(this.prisma, delivery.shipmentId, delivery.status);
+        await this.notificationsService.createForRoles({
+            title: 'Создана доставка',
+            message: `Отгрузка ${delivery.shipmentId} поставлена в доставку`,
+            type: NotificationType.DELIVERY,
+            link: `/deliveries/${delivery.id}`,
+            roleNames: ['MANAGER', 'WAREHOUSE'],
+            meta: {
+                deliveryId: delivery.id,
+                shipmentId: delivery.shipmentId,
+                status: delivery.status,
+            },
+        });
 
         this.eventsGateway.emitDeliveryUpdate({ ...delivery, event: 'CREATED' });
         return delivery;
@@ -307,6 +321,19 @@ export class DeliveriesService {
             data.externalId,
         );
         await this.syncRequestStatusForDelivery(this.prisma, delivery.shipmentId, delivery.status);
+        await this.notificationsService.createForRoles({
+            title: 'Заявка отправлена в Yandex Delivery',
+            message: `Отгрузка ${delivery.shipmentId} передана в доставку`,
+            type: NotificationType.DELIVERY,
+            link: `/deliveries/${delivery.id}`,
+            roleNames: ['MANAGER', 'WAREHOUSE'],
+            meta: {
+                deliveryId: delivery.id,
+                shipmentId: delivery.shipmentId,
+                externalId: delivery.externalId,
+                status: delivery.status,
+            },
+        });
 
         this.eventsGateway.emitDeliveryUpdate(delivery);
         return delivery;
@@ -356,6 +383,10 @@ export class DeliveriesService {
             await this.syncRequestStatusForDelivery(tx, delivery.shipmentId, mappedStatus);
             return nextDelivery;
         });
+
+        if (mappedStatus !== delivery.status) {
+            await this.notifyDeliveryStatusChange(updatedDelivery.id, updatedDelivery.shipmentId, mappedStatus);
+        }
 
         this.eventsGateway.emitDeliveryUpdate(updatedDelivery);
         return this.findById(id);
@@ -424,6 +455,10 @@ export class DeliveriesService {
             return updatedDelivery;
         });
 
+        if (status !== currentDelivery.status) {
+            await this.notifyDeliveryStatusChange(delivery.id, delivery.shipmentId, status);
+        }
+
         this.eventsGateway.emitDeliveryUpdate(delivery);
         return delivery;
     }
@@ -431,6 +466,31 @@ export class DeliveriesService {
     async addEvent(deliveryId: string, title: string, description?: string) {
         return this.prisma.deliveryEvent.create({
             data: { deliveryId, title, description },
+        });
+    }
+
+    private async notifyDeliveryStatusChange(deliveryId: string, shipmentId: string, status: DeliveryStatus) {
+        const statusLabels: Record<DeliveryStatus, string> = {
+            CREATED: 'Создано',
+            COURIER_ASSIGNED: 'Курьер назначен',
+            PICKED_UP: 'Забрано со склада',
+            IN_TRANSIT: 'В пути',
+            DELIVERED: 'Доставлено',
+            PROBLEM: 'Проблема',
+            CANCELLED: 'Отменено',
+        };
+
+        await this.notificationsService.createForRoles({
+            title: status === DeliveryStatus.PROBLEM ? 'Проблема с доставкой' : 'Статус доставки обновлен',
+            message: `Отгрузка ${shipmentId}: ${statusLabels[status]}`,
+            type: NotificationType.DELIVERY,
+            link: `/deliveries/${deliveryId}`,
+            roleNames: status === DeliveryStatus.PROBLEM ? ['MANAGER', 'WAREHOUSE'] : ['MANAGER'],
+            meta: {
+                deliveryId,
+                shipmentId,
+                status,
+            },
         });
     }
 }

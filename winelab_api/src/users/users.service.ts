@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -7,6 +7,34 @@ import { UpdateUserDto } from './dto/update-user.dto';
 @Injectable()
 export class UsersService {
     constructor(private prisma: PrismaService) { }
+
+    private async resolveRole(roleId?: string | null) {
+        if (!roleId) {
+            return null;
+        }
+
+        return this.prisma.role.findUnique({
+            where: { id: roleId },
+            select: {
+                id: true,
+                name: true,
+            },
+        });
+    }
+
+    private buildWarehouseRelation(roleName?: string | null, warehouseId?: string | null) {
+        if (roleName !== 'WAREHOUSE') {
+            return undefined;
+        }
+
+        if (!warehouseId) {
+            throw new BadRequestException('Для кладовщика необходимо указать склад');
+        }
+
+        return {
+            connect: { id: warehouseId },
+        };
+    }
 
     async findAll() {
         return this.prisma.user.findMany({
@@ -20,6 +48,12 @@ export class UsersService {
                         id: true,
                         name: true,
                         description: true,
+                    },
+                },
+                warehouse: {
+                    select: {
+                        id: true,
+                        name: true,
                     },
                 },
                 isActive: true,
@@ -41,7 +75,13 @@ export class UsersService {
                             }
                         }
                     }
-                }
+                },
+                warehouse: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
             }
         });
 
@@ -64,7 +104,13 @@ export class UsersService {
                             }
                         }
                     }
-                }
+                },
+                warehouse: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
             }
         });
     }
@@ -78,14 +124,15 @@ export class UsersService {
 
         const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-        // Extract roleId if present, otherwise ignore (or set default if we had logic for it)
-        const { roleId, ...userData } = createUserDto;
+        const { roleId, warehouseId, ...userData } = createUserDto;
+        const role = await this.resolveRole(roleId);
 
         const user = await this.prisma.user.create({
             data: {
                 ...userData,
                 password: hashedPassword,
                 role: roleId ? { connect: { id: roleId } } : undefined,
+                warehouse: this.buildWarehouseRelation(role?.name, warehouseId),
             },
             select: {
                 id: true,
@@ -97,6 +144,12 @@ export class UsersService {
                         id: true,
                         name: true,
                     }
+                },
+                warehouse: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
                 },
                 isActive: true,
                 createdAt: true,
@@ -113,13 +166,25 @@ export class UsersService {
             updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
         }
 
-        const { roleId, ...userData } = updateUserDto;
+        const { roleId, warehouseId, ...userData } = updateUserDto;
+        const currentUser = await this.findById(id);
+        const nextRoleId = roleId ?? currentUser.roleId ?? undefined;
+        const role = await this.resolveRole(nextRoleId);
+        const nextWarehouseId = warehouseId === undefined ? currentUser.warehouseId : warehouseId;
 
         return this.prisma.user.update({
             where: { id },
             data: {
                 ...userData,
                 role: roleId ? { connect: { id: roleId } } : undefined,
+                warehouse:
+                    role?.name === 'WAREHOUSE'
+                        ? nextWarehouseId
+                            ? { connect: { id: nextWarehouseId } }
+                            : (() => {
+                                  throw new BadRequestException('Для кладовщика необходимо указать склад');
+                              })()
+                        : { disconnect: true },
             },
             select: {
                 id: true,
@@ -136,6 +201,12 @@ export class UsersService {
                             }
                         }
                     }
+                },
+                warehouse: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
                 },
                 isActive: true,
                 createdAt: true,

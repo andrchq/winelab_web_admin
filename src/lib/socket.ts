@@ -2,22 +2,24 @@
 
 import { io, Socket } from "socket.io-client";
 
-// Initialize socket connection
-// Use the same URL as the API but without /api suffix if needed, or just the base URL
-// Since API_URL is http://host:port/api, we need http://host:port
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
-const SOCKET_URL = API_URL.replace('/api', '');
+function resolveSocketUrl() {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+    return apiUrl.replace(/\/api\/?$/, "");
+}
+
+const SOCKET_URL = resolveSocketUrl();
 
 const isBrowser = typeof window !== 'undefined';
 
 // Initialize socket only in browser context to avoid build errors
 export const socket: Socket = isBrowser
     ? io(SOCKET_URL, {
-        transports: ["websocket", "polling"],
+        transports: ["polling", "websocket"],
         autoConnect: false, // Explicitly false, we connect in AuthProvider
         reconnection: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
+        timeout: 5000,
     })
     : ({
         on: () => { },
@@ -31,5 +33,7 @@ export const socket: Socket = isBrowser
 if (isBrowser) {
     socket.on("connect", () => console.log("Socket connected:", socket.id));
     socket.on("disconnect", () => console.log("Socket disconnected"));
-    socket.on("connect_error", (err) => console.error("Socket error:", err));
+    socket.on("connect_error", (err) => {
+        console.warn("Socket connect warning:", err.message);
+    });
 }

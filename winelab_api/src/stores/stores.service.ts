@@ -3,15 +3,75 @@ import { AssetProcess, StoreStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { SettingsService } from '../settings/settings.service';
 
 const execAsync = promisify(exec);
 
 @Injectable()
 export class StoresService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private settingsService: SettingsService,
+    ) { }
 
     private createUnidentifiedSerial() {
         return `UNBOUND-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    }
+
+    private async applyAutoInstallEquipment(storeId: string) {
+        const templateProducts = (await this.settingsService.getStoreAutoInstallProducts()).filter(
+            (product): product is NonNullable<typeof product> => product != null,
+        );
+        if (templateProducts.length === 0) {
+            return [];
+        }
+
+        const store = await this.prisma.store.findUnique({
+            where: { id: storeId },
+            select: { name: true },
+        });
+
+        const existingInstalled = await this.prisma.asset.findMany({
+            where: {
+                storeId,
+                processStatus: AssetProcess.INSTALLED,
+                productId: { in: templateProducts.map((product) => product.id) },
+            },
+            select: { productId: true },
+        });
+
+        const existingProductIds = new Set(existingInstalled.map((asset) => asset.productId));
+        const missingProducts = templateProducts.filter((product) => !existingProductIds.has(product.id));
+
+        const createdAssets = [];
+
+        for (const product of missingProducts) {
+            const asset = await this.prisma.asset.create({
+                data: {
+                    serialNumber: this.createUnidentifiedSerial(),
+                    isUnidentified: true,
+                    installationConfirmed: false,
+                    productId: product.id,
+                    storeId,
+                    processStatus: AssetProcess.INSTALLED,
+                    condition: 'WORKING',
+                    notes: 'Автоустановка при создании магазина. Требует подтверждения.',
+                },
+            });
+
+            await this.prisma.assetHistory.create({
+                data: {
+                    assetId: asset.id,
+                    action: 'Автоустановлено в магазин',
+                    location: store?.name || storeId,
+                    details: 'Позиция создана автоматически по шаблону автоустановки и требует подтверждения',
+                },
+            });
+
+            createdAssets.push(asset);
+        }
+
+        return createdAssets;
     }
 
     async findAll(filters: { search?: string; status?: any; manager?: string } = {}) {
@@ -36,6 +96,22 @@ export class StoresService {
         const stores = await this.prisma.store.findMany({
             where,
             include: {
+                assets: {
+                    where: { processStatus: AssetProcess.INSTALLED },
+                    select: {
+                        id: true,
+                        installationConfirmed: true,
+                        isUnidentified: true,
+                        processStatus: true,
+                        product: {
+                            select: {
+                                id: true,
+                                name: true,
+                                category: true,
+                            },
+                        },
+                    },
+                },
                 _count: {
                     select: { assets: true, requests: true },
                 },
@@ -179,12 +255,15 @@ export class StoresService {
         cctvSystem?: string;
         cameraCount?: number;
     }, userId?: string) {
-        return this.prisma.store.create({
+        const store = await this.prisma.store.create({
             data: {
                 ...data,
                 createdById: userId
             } as any
         });
+
+        await this.applyAutoInstallEquipment(store.id);
+        return this.findById(store.id);
     }
 
     async update(id: string, data: Partial<{
@@ -318,11 +397,13 @@ export class StoresService {
                             where: { id: existing.id },
                             data: storeData
                         });
+                        await this.applyAutoInstallEquipment(existing.id);
                         updated++;
                     } else {
-                        await this.prisma.store.create({
+                        const createdStore = await this.prisma.store.create({
                             data: storeData
                         });
+                        await this.applyAutoInstallEquipment(createdStore.id);
                         created++;
                     }
 

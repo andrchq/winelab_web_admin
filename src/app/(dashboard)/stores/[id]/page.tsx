@@ -219,6 +219,7 @@ export default function StoreDetailPage() {
     const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);
     const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
     const [pingStatus, setPingStatus] = useState<PingStatusResponse | null>(null);
+    const [installingAssetId, setInstallingAssetId] = useState<string | null>(null);
 
     // Batch replacement state
     const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
@@ -235,10 +236,12 @@ export default function StoreDetailPage() {
             .map((a: any) => ({
                 id: a.id,
                 storeId: store.id,
+                assetId: a.id,
                 category: a.product.category,
                 productName: a.product.name,
                 serialNumber: a.serialNumber,
                 skipInventory: false,
+                installationConfirmed: a.installationConfirmed,
                 createdAt: a.createdAt
             }));
 
@@ -295,6 +298,20 @@ export default function StoreDetailPage() {
         } catch (error) {
             console.error(error);
             toast.error("Не удалось удалить магазин");
+        }
+    };
+
+    const handleConfirmInstallation = async (assetId: string) => {
+        try {
+            setInstallingAssetId(assetId);
+            await api.patch(`/assets/${assetId}/install`);
+            toast.success("Оборудование переведено в установленное");
+            await refetch();
+        } catch (error) {
+            console.error(error);
+            toast.error("Не удалось подтвердить установку");
+        } finally {
+            setInstallingAssetId(null);
         }
     };
 
@@ -478,7 +495,14 @@ export default function StoreDetailPage() {
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             <Badge variant="warning">Ожидает</Badge>
-                                                            <Button size="sm" variant="outline">Подтвердить установку</Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                disabled={installingAssetId === item.id}
+                                                                onClick={() => handleConfirmInstallation(item.id)}
+                                                            >
+                                                                {installingAssetId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Подтвердить установку"}
+                                                            </Button>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -623,6 +647,11 @@ export default function StoreDetailPage() {
                                                                                         {item.isUnidentified && (
                                                                                             <Badge variant="outline" className="px-1.5 py-0 h-4 text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/20">
                                                                                                 Без ШК
+                                                                                            </Badge>
+                                                                                        )}
+                                                                                        {item.installationConfirmed === false && (
+                                                                                            <Badge variant="outline" className="px-1.5 py-0 h-4 text-[10px] bg-blue-500/10 text-blue-600 border-blue-500/20">
+                                                                                                Не подтверждено
                                                                                             </Badge>
                                                                                         )}
                                                                                         {item._count?.assetHistory > 0 && (

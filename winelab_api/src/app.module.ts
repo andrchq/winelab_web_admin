@@ -17,6 +17,8 @@ import { ReceivingModule } from './receiving/receiving.module';
 import { CategoriesModule } from './categories/categories.module';
 import { RolesModule } from './roles/roles.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { SettingsModule } from './settings/settings.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
     imports: [
@@ -41,6 +43,8 @@ import { InventoryModule } from './inventory/inventory.module';
         ReceivingModule,
         CategoriesModule,
         InventoryModule,
+        SettingsModule,
+        NotificationsModule,
     ],
 })
 export class AppModule { }

@@ -26,4 +26,9 @@ export class CreateUserDto {
     @IsUUID()
     @IsOptional()
     roleId?: string;
+
+    @ApiProperty({ example: 'uuid-warehouse-id', required: false })
+    @IsUUID()
+    @IsOptional()
+    warehouseId?: string;
 }

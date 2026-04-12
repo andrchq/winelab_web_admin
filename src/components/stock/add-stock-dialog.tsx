@@ -24,9 +24,9 @@ export function AddStockDialog({ open, onOpenChange, onSuccess }: AddStockDialog
     const [formData, setFormData] = useState({
         productId: "",
         warehouseId: "",
-        quantity: "0",
         minQuantity: "0"
     });
+    const quantityProducts = products?.filter((product) => product.accountingType === "QUANTITY") || [];
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -35,15 +35,15 @@ export function AddStockDialog({ open, onOpenChange, onSuccess }: AddStockDialog
             await api.post('/stock', {
                 productId: formData.productId,
                 warehouseId: formData.warehouseId,
-                quantity: parseInt(formData.quantity) || 0,
+                quantity: 0,
                 minQuantity: parseInt(formData.minQuantity) || 0
             });
-            toast.success("Позиция добавлена");
+            toast.success("Позиция привязана");
             onSuccess();
             onOpenChange(false);
-            setFormData({ productId: "", warehouseId: "", quantity: "0", minQuantity: "0" });
+            setFormData({ productId: "", warehouseId: "", minQuantity: "0" });
         } catch (error) {
-            toast.error("Ошибка при создании позиции");
+            toast.error("Ошибка при привязке позиции");
             console.error(error);
         } finally {
             setIsLoading(false);
@@ -54,9 +54,9 @@ export function AddStockDialog({ open, onOpenChange, onSuccess }: AddStockDialog
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Добавить позицию на склад</DialogTitle>
+                    <DialogTitle>Привязать позицию к складу</DialogTitle>
                     <DialogDescription>
-                        Привяжите продукт к складу для начала учета остатков.
+                        Создайте пустую количественную позицию на складе. Фактический остаток заполняется только через учетные операции.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -70,7 +70,7 @@ export function AddStockDialog({ open, onOpenChange, onSuccess }: AddStockDialog
                                 <SelectValue placeholder="Выберите товар" />
                             </SelectTrigger>
                             <SelectContent>
-                                {products?.map((product) => (
+                                {quantityProducts.map((product) => (
                                     <SelectItem key={product.id} value={product.id}>
                                         {product.name} ({product.sku})
                                     </SelectItem>
@@ -98,23 +98,14 @@ export function AddStockDialog({ open, onOpenChange, onSuccess }: AddStockDialog
                         </Select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label>Начальное кол-во</Label>
-                            <Input
-                                type="number"
-                                value={formData.quantity}
-                                onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Минимальный остаток</Label>
-                            <Input
-                                type="number"
-                                value={formData.minQuantity}
-                                onChange={(e) => setFormData({ ...formData, minQuantity: e.target.value })}
-                            />
-                        </div>
+                    <div className="space-y-2">
+                        <Label>Минимальный остаток</Label>
+                        <Input
+                            type="number"
+                            min="0"
+                            value={formData.minQuantity}
+                            onChange={(e) => setFormData({ ...formData, minQuantity: e.target.value })}
+                        />
                     </div>
 
                     <DialogFooter>
@@ -123,7 +114,7 @@ export function AddStockDialog({ open, onOpenChange, onSuccess }: AddStockDialog
                         </Button>
                         <Button type="submit" disabled={isLoading || !formData.productId || !formData.warehouseId}>
                             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Создать
+                            Привязать
                         </Button>
                     </DialogFooter>
                 </form>
