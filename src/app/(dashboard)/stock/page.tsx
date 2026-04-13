@@ -133,16 +133,10 @@ export default function StockPage() {
 
 
     const handleEditClick = (group: GroupedStock) => {
-        const editableItems = group.items.filter((item) => item.source !== 'ASSET_AGGREGATE');
-
-        if (editableItems.length === 0) {
-            return;
-        }
-
         setManagerState({
             open: true,
             product: group.product,
-            items: editableItems,
+            items: group.items,
         });
     };
 
@@ -375,7 +369,7 @@ export default function StockPage() {
                                                             </div>
                                                         </td>
                                                         <td onClick={(e) => e.stopPropagation()}>
-                                                            {canManageStock && group.items.some((item) => item.source !== 'ASSET_AGGREGATE') && (
+                                                            {canManageStock && (
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="sm"

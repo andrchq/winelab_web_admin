@@ -6,6 +6,39 @@ import { PrismaService } from '../prisma/prisma.service';
 export class StockService {
     constructor(private prisma: PrismaService) { }
 
+    private async resolveValidationQuantity(productId: string, warehouseId: string, fallbackQuantity: number) {
+        const product = await this.prisma.product.findUnique({
+            where: { id: productId },
+            select: { accountingType: true },
+        });
+
+        if (!product) {
+            throw new NotFoundException(`Product with ID ${productId} not found`);
+        }
+
+        if (product.accountingType === ProductAccountingType.QUANTITY) {
+            return {
+                product,
+                quantity: fallbackQuantity,
+            };
+        }
+
+        const serializedCount = await this.prisma.asset.count({
+            where: {
+                productId,
+                warehouseId,
+                storeId: null,
+                condition: { not: 'DECOMMISSIONED' as any },
+                processStatus: { in: ['AVAILABLE', 'RESERVED'] as any },
+            },
+        });
+
+        return {
+            product,
+            quantity: serializedCount + fallbackQuantity,
+        };
+    }
+
     private validateSnapshot(quantity: number, reserved: number, minQuantity: number) {
         if (quantity < 0) {
             throw new BadRequestException('РљРѕР»РёС‡РµСЃС‚РІРѕ РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ РѕС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Рј');
@@ -63,18 +96,11 @@ export class StockService {
             throw new BadRequestException('Р СѓС‡РЅРѕРµ РІРЅРµСЃРµРЅРёРµ РєРѕР»РёС‡РµСЃС‚РІР° Рё СЂРµР·РµСЂРІР° РѕС‚РєР»СЋС‡РµРЅРѕ. РСЃРїРѕР»СЊР·СѓР№С‚Рµ РїСЂРёРµРјРєСѓ, РёРЅРІРµРЅС‚Р°СЂРёР·Р°С†РёСЋ Рё РѕС‚РіСЂСѓР·РєРё.');
         }
 
-        const product = await this.prisma.product.findUnique({
-            where: { id: data.productId },
-            select: { accountingType: true },
-        });
-
-        if (!product) {
-            throw new NotFoundException(`Product with ID ${data.productId} not found`);
-        }
-
-        if (product.accountingType !== ProductAccountingType.QUANTITY) {
-            throw new BadRequestException('Р СѓС‡РЅР°СЏ РїСЂРёРІСЏР·РєР° РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РґР»СЏ РєРѕР»РёС‡РµСЃС‚РІРµРЅРЅС‹С… РїРѕР·РёС†РёР№.');
-        }
+        const { product, quantity: validationQuantity } = await this.resolveValidationQuantity(
+            data.productId,
+            data.warehouseId,
+            0,
+        );
 
         const existing = await this.prisma.stockItem.findUnique({
             where: {
@@ -89,14 +115,14 @@ export class StockService {
             throw new BadRequestException('РџРѕР·РёС†РёСЏ СѓР¶Рµ РїСЂРёРІСЏР·Р°РЅР° Рє СЌС‚РѕРјСѓ СЃРєР»Р°РґСѓ.');
         }
 
-        this.validateSnapshot(0, 0, minQuantity);
+        this.validateSnapshot(validationQuantity, reserved, minQuantity);
 
         return this.prisma.stockItem.create({
             data: {
                 productId: data.productId,
                 warehouseId: data.warehouseId,
                 quantity: 0,
-                reserved: 0,
+                reserved,
                 minQuantity,
             },
             include: {
@@ -115,11 +141,16 @@ export class StockService {
             throw new BadRequestException('Ручное изменение количества отключено. Менять можно только резерв и минимальный остаток.');
         }
 
+        const { quantity: validationQuantity } = await this.resolveValidationQuantity(
+            existing.productId,
+            existing.warehouseId,
+            existing.quantity,
+        );
         const nextQuantity = existing.quantity;
         const nextReserved = data.reserved ?? existing.reserved;
         const nextMinQuantity = data.minQuantity ?? existing.minQuantity;
 
-        this.validateSnapshot(nextQuantity, nextReserved, nextMinQuantity);
+        this.validateSnapshot(validationQuantity, nextReserved, nextMinQuantity);
 
         return this.prisma.stockItem.update({
             where: { id },

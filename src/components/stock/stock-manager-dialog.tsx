@@ -89,12 +89,13 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                         minQuantity: state.minQuantity
                     });
                 } else {
-                    if (state.minQuantity > 0) {
+                    if (state.minQuantity > 0 || state.reserved > 0) {
                         await api.post(`/stock`, {
                             productId: product.id,
                             warehouseId: state.id,
                             quantity: 0,
-                            minQuantity: state.minQuantity
+                            minQuantity: state.minQuantity,
+                            reserved: state.reserved,
                         });
                     }
                 }
