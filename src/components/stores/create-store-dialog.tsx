@@ -144,16 +144,35 @@ export function CreateStoreDialog({ onSuccess }: CreateStoreDialogProps) {
 
         try {
             const token = localStorage.getItem("accessToken");
+            const normalizedPayload = {
+                name: formData.name.trim(),
+                status: formData.status,
+                address: formData.address.trim(),
+                city: formData.city.trim() || undefined,
+                region: formData.region.trim() || undefined,
+                cfo: formData.cfo.trim() || undefined,
+                phone: formData.phone.trim() || undefined,
+                email: formData.email.trim() || undefined,
+                manager: formData.manager.trim() || undefined,
+                serverIp: formData.serverIp.trim() || undefined,
+                providerIp1: formData.providerIp1.trim() || undefined,
+                providerIp2: formData.providerIp2.trim() || undefined,
+                utmUrl: formData.utmUrl.trim() || undefined,
+                retailUrl: formData.retailUrl.trim() || undefined,
+                legalEntity: formData.legalEntity.trim() || undefined,
+                inn: formData.inn.trim() || undefined,
+                kpp: formData.kpp.trim() || undefined,
+                fsrarId: formData.fsrarId.trim() || undefined,
+                cctvSystem: formData.cctvSystem.trim() || undefined,
+                cameraCount: formData.cameraCount ? Number.parseInt(formData.cameraCount, 10) : null,
+            };
             const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api"}/stores`, {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${token}`,
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                    ...formData,
-                    cameraCount: formData.cameraCount ? Number.parseInt(formData.cameraCount, 10) : null,
-                }),
+                body: JSON.stringify(normalizedPayload),
             });
 
             if (!response.ok) {

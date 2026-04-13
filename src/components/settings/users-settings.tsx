@@ -122,6 +122,7 @@ export function UsersSettings() {
         password?: string;
         phone?: string;
         roleId: string;
+        warehouseId?: string;
         isActive: boolean;
     }) => {
         const normalizedPayload = {
@@ -130,6 +131,7 @@ export function UsersSettings() {
             phone: data.phone?.trim() || undefined,
             password: data.password?.trim() || undefined,
             roleId: data.roleId || undefined,
+            warehouseId: data.warehouseId?.trim() || undefined,
             isActive: data.isActive,
         };
 
@@ -143,6 +145,7 @@ export function UsersSettings() {
                     phone: normalizedPayload.phone,
                     password: normalizedPayload.password,
                     roleId: normalizedPayload.roleId,
+                    warehouseId: normalizedPayload.warehouseId,
                 });
             }
 
