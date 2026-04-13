@@ -1,85 +1,172 @@
-
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Loader2, FolderTree, Pencil, Plus, Search, Settings as SettingsIcon, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { useCategories } from "@/lib/hooks";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Pencil, Trash2, Search, FolderTree } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
-import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Settings as SettingsIcon } from "lucide-react";
+import { useCategories } from "@/lib/hooks";
+import type { EquipmentCategory } from "@/types/api";
 import { useAuth } from "@/contexts/AuthContext";
+
+type CategoryType = EquipmentCategory["categoryType"];
+
+type CategoryFormState = {
+    name: string;
+    code: string;
+    categoryType: CategoryType;
+    parentId: string;
+};
+
+const EMPTY_PARENT = "none";
+
+const CATEGORY_TYPE_OPTIONS: Array<{
+    value: CategoryType;
+    label: string;
+    description: string;
+}> = [
+    {
+        value: "REQUIRED",
+        label: "Обязательная",
+        description: "Категория участвует в обязательном наборе для открытия магазина.",
+    },
+    {
+        value: "OPTIONAL",
+        label: "Необязательная",
+        description: "Оборудование имеет свою категорию и ШК-учет, но не требуется для открытия магазина.",
+    },
+    {
+        value: "ACCESSORY",
+        label: "Сопутствующая",
+        description: "Количественная сопутка и расходники без поштучного ШК-учета.",
+    },
+];
+
+const DEFAULT_FORM: CategoryFormState = {
+    name: "",
+    code: "",
+    categoryType: "OPTIONAL",
+    parentId: EMPTY_PARENT,
+};
+
+function getCategoryTypeMeta(categoryType: CategoryType) {
+    switch (categoryType) {
+        case "REQUIRED":
+            return {
+                label: "Обязательное",
+                className: "bg-red-500/10 text-red-600 hover:bg-red-500/20 border-red-500/20",
+            };
+        case "ACCESSORY":
+            return {
+                label: "Сопутствующее",
+                className: "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border-amber-500/20",
+            };
+        default:
+            return {
+                label: "Необязательное",
+                className: "bg-sky-500/10 text-sky-600 hover:bg-sky-500/20 border-sky-500/20",
+            };
+    }
+}
+
+function normalizeForm(category?: EquipmentCategory): CategoryFormState {
+    if (!category) {
+        return DEFAULT_FORM;
+    }
+
+    return {
+        name: category.name,
+        code: category.code,
+        categoryType: category.categoryType ?? (category.isMandatory ? "REQUIRED" : "OPTIONAL"),
+        parentId: category.parentId || EMPTY_PARENT,
+    };
+}
 
 export function CategoriesSettings() {
     const { data: categories, isLoading, refetch } = useCategories();
     const { hasRole } = useAuth();
+
     const [search, setSearch] = useState("");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [editingCategory, setEditingCategory] = useState<any>(null);
+    const [editingCategory, setEditingCategory] = useState<EquipmentCategory | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [formData, setFormData] = useState<CategoryFormState>(DEFAULT_FORM);
 
-    const canDelete = hasRole(['ADMIN', 'MANAGER']);
+    const canDelete = hasRole(["ADMIN", "MANAGER"]);
 
-    // Form state
-    const [formData, setFormData] = useState({
-        name: "",
-        code: "",
-        isMandatory: false,
-        parentId: "none"
-    });
-
-    const filteredCategories = categories?.filter(c =>
-        c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.code.toLowerCase().includes(search.toLowerCase())
-    ) || [];
-
-    const handleOpenDialog = (category?: any) => {
-        if (category) {
-            setEditingCategory(category);
-            setFormData({
-                name: category.name,
-                code: category.code,
-                isMandatory: category.isMandatory || false,
-                parentId: category.parentId || "none"
-            });
-        } else {
-            setEditingCategory(null);
-            setFormData({
-                name: "",
-                code: "",
-                isMandatory: false,
-                parentId: "none"
-            });
+    const filteredCategories = useMemo(() => {
+        const query = search.trim().toLowerCase();
+        if (!query) {
+            return categories;
         }
+
+        return categories.filter((category) =>
+            category.name.toLowerCase().includes(query) ||
+            category.code.toLowerCase().includes(query),
+        );
+    }, [categories, search]);
+
+    const parentOptions = useMemo(() => {
+        return categories
+            .filter((category) =>
+                category.id !== editingCategory?.id &&
+                category.categoryType === formData.categoryType,
+            )
+            .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    }, [categories, editingCategory?.id, formData.categoryType]);
+
+    const handleOpenDialog = (category?: EquipmentCategory) => {
+        setEditingCategory(category ?? null);
+        setFormData(normalizeForm(category));
         setIsDialogOpen(true);
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleTypeChange = (categoryType: CategoryType) => {
+        const nextParentId = categories.some((category) =>
+            category.id === formData.parentId &&
+            category.id !== editingCategory?.id &&
+            category.categoryType === categoryType,
+        )
+            ? formData.parentId
+            : EMPTY_PARENT;
+
+        setFormData((prev) => ({
+            ...prev,
+            categoryType,
+            parentId: nextParentId,
+        }));
+    };
+
+    const handleSubmit = async (event: React.FormEvent) => {
+        event.preventDefault();
         setIsSubmitting(true);
 
         try {
-            let finalParentId = formData.parentId === "none" ? null : formData.parentId;
-
-            if (formData.isMandatory) {
-                finalParentId = null;
-            } else if (!finalParentId) {
-                const accessoryCat = categories?.find(c => c.code === 'ACCESSORY');
-                if (accessoryCat) {
-                    finalParentId = accessoryCat.id;
-                }
-            }
-
             const payload = {
-                ...formData,
-                parentId: finalParentId
+                name: formData.name.trim(),
+                code: formData.code.trim(),
+                categoryType: formData.categoryType,
+                parentId: formData.parentId === EMPTY_PARENT ? null : formData.parentId,
             };
 
             if (editingCategory) {
@@ -89,25 +176,29 @@ export function CategoriesSettings() {
                 await api.post("/categories", payload);
                 toast.success("Категория создана");
             }
-            refetch();
+
+            await refetch();
             setIsDialogOpen(false);
         } catch (error) {
             console.error(error);
-            toast.error("Ошибка при сохранении категории");
+            toast.error("Не удалось сохранить категорию");
         } finally {
             setIsSubmitting(false);
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Вы уверены? Это действие нельзя отменить.")) return;
+        if (!confirm("Удалить категорию? Действие необратимо.")) {
+            return;
+        }
 
         try {
             await api.delete(`/categories/${id}`);
             toast.success("Категория удалена");
-            refetch();
+            await refetch();
         } catch (error) {
-            toast.error("Не удалось удалить категорию (возможно, к ней привязаны товары)");
+            console.error(error);
+            toast.error("Не удалось удалить категорию");
         }
     };
 
@@ -115,38 +206,39 @@ export function CategoriesSettings() {
         <Card variant="elevated">
             <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                         <SettingsIcon className="h-4 w-4 text-primary" />
                     </div>
                     Категории оборудования
                 </CardTitle>
-                <CardDescription>Настройка категорий и обязательного оборудования для магазинов</CardDescription>
+                <CardDescription>
+                    Управление категориями обязательного, необязательного и сопутствующего оборудования.
+                </CardDescription>
             </CardHeader>
+
             <CardContent className="space-y-4">
-                {/* Search + Add Button */}
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row">
                     <div className="relative flex-1">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
-                            placeholder="Поиск категорий..."
                             className="pl-9"
+                            placeholder="Поиск категорий..."
                             value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            onChange={(event) => setSearch(event.target.value)}
                         />
                     </div>
-                    <Button onClick={() => handleOpenDialog()} className="shrink-0">
+                    <Button className="shrink-0" onClick={() => handleOpenDialog()}>
                         <Plus className="mr-2 h-4 w-4" />
                         Добавить категорию
                     </Button>
                 </div>
 
-                {/* Desktop table */}
-                <div className="hidden md:block rounded-md border overflow-x-auto">
+                <div className="hidden overflow-x-auto rounded-md border md:block">
                     <table className="data-table">
                         <thead>
                             <tr>
                                 <th>Название</th>
-                                <th>Код (System)</th>
+                                <th>Код (system)</th>
                                 <th>Тип</th>
                                 <th>Родительская категория</th>
                                 <th className="w-[100px]">Действия</th>
@@ -155,112 +247,122 @@ export function CategoriesSettings() {
                         <tbody>
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={5} className="text-center py-8">
-                                        <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                                    <td colSpan={5} className="py-8 text-center">
+                                        <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
                                     </td>
                                 </tr>
                             ) : filteredCategories.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="text-center py-8 text-muted-foreground">
+                                    <td colSpan={5} className="py-8 text-center text-muted-foreground">
                                         Категории не найдены
                                     </td>
                                 </tr>
                             ) : (
-                                filteredCategories.map((category) => (
-                                    <tr key={category.id}>
-                                        <td className="font-medium">{category.name}</td>
-                                        <td className="font-mono text-xs">{category.code}</td>
-                                        <td>
-                                            {category.isMandatory ? (
-                                                <Badge variant="destructive" className="bg-red-500/10 text-red-600 hover:bg-red-500/20 border-red-500/20">
-                                                    Обязательное
+                                filteredCategories.map((category) => {
+                                    const typeMeta = getCategoryTypeMeta(category.categoryType);
+
+                                    return (
+                                        <tr key={category.id}>
+                                            <td className="font-medium">{category.name}</td>
+                                            <td className="font-mono text-xs">{category.code}</td>
+                                            <td>
+                                                <Badge variant="outline" className={typeMeta.className}>
+                                                    {typeMeta.label}
                                                 </Badge>
-                                            ) : (
-                                                <Badge variant="secondary">Опциональное</Badge>
-                                            )}
-                                        </td>
-                                        <td>
-                                            {category.parent ? (
-                                                <Badge variant="outline" className="font-normal text-muted-foreground">
-                                                    {category.parent.name}
-                                                </Badge>
-                                            ) : (
-                                                <span className="text-muted-foreground text-sm">-</span>
-                                            )}
-                                        </td>
-                                        <td>
-                                            <div className="flex items-center gap-1">
-                                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleOpenDialog(category)}>
-                                                    <Pencil className="h-4 w-4" />
-                                                </Button>
-                                                {canDelete && (
+                                            </td>
+                                            <td>
+                                                {category.parent ? (
+                                                    <Badge variant="outline" className="font-normal text-muted-foreground">
+                                                        {category.parent.name}
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-sm text-muted-foreground">-</span>
+                                                )}
+                                            </td>
+                                            <td>
+                                                <div className="flex items-center gap-1">
                                                     <Button
                                                         size="icon"
                                                         variant="ghost"
-                                                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                        onClick={() => handleDelete(category.id)}
+                                                        className="h-8 w-8"
+                                                        onClick={() => handleOpenDialog(category)}
                                                     >
-                                                        <Trash2 className="h-4 w-4" />
+                                                        <Pencil className="h-4 w-4" />
                                                     </Button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
+                                                    {canDelete && (
+                                                        <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                            onClick={() => handleDelete(category.id)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
                 </div>
 
-                {/* Mobile card list */}
-                <div className="md:hidden space-y-3">
+                <div className="space-y-3 md:hidden">
                     {isLoading ? (
                         <div className="flex justify-center py-8">
                             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                         </div>
                     ) : filteredCategories.length === 0 ? (
-                        <p className="text-center py-8 text-muted-foreground">Категории не найдены</p>
+                        <p className="py-8 text-center text-muted-foreground">Категории не найдены</p>
                     ) : (
-                        filteredCategories.map((category) => (
-                            <div key={category.id} className="rounded-lg border p-4 space-y-3 bg-muted/10">
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <FolderTree className="h-4 w-4 text-muted-foreground shrink-0" />
-                                        <span className="font-medium truncate">{category.name}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleOpenDialog(category)}>
-                                            <Pencil className="h-3.5 w-3.5" />
-                                        </Button>
-                                        {canDelete && (
+                        filteredCategories.map((category) => {
+                            const typeMeta = getCategoryTypeMeta(category.categoryType);
+
+                            return (
+                                <div key={category.id} className="space-y-3 rounded-lg border bg-muted/10 p-4">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <FolderTree className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                            <span className="truncate font-medium">{category.name}</span>
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-1">
                                             <Button
                                                 size="icon"
                                                 variant="ghost"
-                                                className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                onClick={() => handleDelete(category.id)}
+                                                className="h-7 w-7"
+                                                onClick={() => handleOpenDialog(category)}
                                             >
-                                                <Trash2 className="h-3.5 w-3.5" />
+                                                <Pencil className="h-3.5 w-3.5" />
                                             </Button>
+                                            {canDelete && (
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                    onClick={() => handleDelete(category.id)}
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <code className="rounded bg-muted px-2 py-0.5 text-xs">{category.code}</code>
+                                        <Badge variant="outline" className={typeMeta.className}>
+                                            {typeMeta.label}
+                                        </Badge>
+                                        {category.parent && (
+                                            <Badge variant="outline" className="font-normal text-muted-foreground">
+                                                {category.parent.name}
+                                            </Badge>
                                         )}
                                     </div>
                                 </div>
-                                <div className="flex flex-wrap gap-2 items-center">
-                                    <code className="text-xs bg-muted px-2 py-0.5 rounded">{category.code}</code>
-                                    {category.isMandatory ? (
-                                        <Badge variant="destructive" className="bg-red-500/10 text-red-600 border-red-500/20 text-xs">
-                                            Обязательное
-                                        </Badge>
-                                    ) : (
-                                        <Badge variant="secondary" className="text-xs">Опциональное</Badge>
-                                    )}
-                                    {category.parent && (
-                                        <Badge variant="outline" className="font-normal text-muted-foreground text-xs">
-                                            ↳ {category.parent.name}
-                                        </Badge>
-                                    )}
-                                </div>
-                            </div>
-                        ))
+                            );
+                        })
                     )}
                 </div>
             </CardContent>
@@ -268,78 +370,87 @@ export function CategoriesSettings() {
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle>{editingCategory ? "Редактировать категорию" : "Новая категория"}</DialogTitle>
+                        <DialogTitle>
+                            {editingCategory ? "Редактировать категорию" : "Новая категория"}
+                        </DialogTitle>
                         <DialogDescription>
-                            Заполните параметры категории оборудования. Код должен быть уникальным.
+                            Укажите тип категории. Родитель и дочерняя категория должны быть одного типа.
                         </DialogDescription>
                     </DialogHeader>
+
                     <form onSubmit={handleSubmit} className="space-y-4 py-4">
                         <div className="space-y-2">
-                            <Label htmlFor="name">Название</Label>
+                            <Label htmlFor="category-name">Название</Label>
                             <Input
-                                id="name"
+                                id="category-name"
                                 value={formData.name}
-                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                onChange={(event) => setFormData((prev) => ({ ...prev, name: event.target.value }))}
+                                placeholder="Например: МФУ"
                                 required
-                                placeholder="Например: Сервер 1U"
                             />
                         </div>
+
                         <div className="space-y-2">
-                            <Label htmlFor="code">Системный Код</Label>
+                            <Label htmlFor="category-code">Системный код</Label>
                             <Input
-                                id="code"
+                                id="category-code"
                                 value={formData.code}
-                                onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') })}
+                                onChange={(event) =>
+                                    setFormData((prev) => ({
+                                        ...prev,
+                                        code: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""),
+                                    }))
+                                }
+                                placeholder="MFU"
+                                disabled={Boolean(editingCategory)}
                                 required
-                                placeholder="SERVER_1U"
-                                disabled={!!editingCategory}
                             />
-                            <p className="text-xs text-muted-foreground">Только латинские буквы, цифры и подчеркивание</p>
+                            <p className="text-xs text-muted-foreground">
+                                Только латинские буквы, цифры и подчеркивание.
+                            </p>
                         </div>
 
-                        <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
-                            <div className="space-y-0.5">
-                                <Label>Обязательное оборудование</Label>
-                                <p className="text-xs text-muted-foreground">
-                                    Наличие оборудования этой категории требуется для открытия магазина
-                                </p>
-                            </div>
-                            <Switch
-                                checked={formData.isMandatory}
-                                onCheckedChange={(checked) => {
-                                    setFormData({
-                                        ...formData,
-                                        isMandatory: checked,
-                                        parentId: checked ? "none" : formData.parentId
-                                    });
-                                }}
-                            />
+                        <div className="space-y-2">
+                            <Label>Тип категории</Label>
+                            <Select value={formData.categoryType} onValueChange={(value) => handleTypeChange(value as CategoryType)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Выберите тип" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {CATEGORY_TYPE_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                                {CATEGORY_TYPE_OPTIONS.find((option) => option.value === formData.categoryType)?.description}
+                            </p>
                         </div>
 
-                        {!formData.isMandatory && (
-                            <div className="space-y-2">
-                                <Label>Родительская категория</Label>
-                                <Select
-                                    value={formData.parentId}
-                                    onValueChange={(value) => setFormData({ ...formData, parentId: value })}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Выберите родителя" />
-                                    </SelectTrigger>
-                                    <SelectContent className="max-h-[200px]">
-                                        <SelectItem value="none">По умолчанию (Сопутствующее)</SelectItem>
-                                        {categories?.filter(c => c.isMandatory && c.id !== editingCategory?.id).map((c) => (
-                                            <SelectItem key={c.id} value={c.id}>
-                                                {c.name} ({c.code})
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs text-muted-foreground">
-                                    Если не выбрано, категория будет помечена как "Сопутствующее"
-                                </p>
-                            </div>
-                        )}
+                        <div className="space-y-2">
+                            <Label>Родительская категория</Label>
+                            <Select
+                                value={formData.parentId}
+                                onValueChange={(value) => setFormData((prev) => ({ ...prev, parentId: value }))}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Без родителя" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-[220px]">
+                                    <SelectItem value={EMPTY_PARENT}>Без родителя</SelectItem>
+                                    {parentOptions.map((category) => (
+                                        <SelectItem key={category.id} value={category.id}>
+                                            {category.name} ({category.code})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                                В качестве родителя доступны только категории того же типа.
+                            </p>
+                        </div>
 
                         <DialogFooter>
                             <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)}>

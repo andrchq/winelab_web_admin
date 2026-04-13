@@ -1,11 +1,25 @@
 
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { EquipmentCategory } from '@prisma/client';
+import { CategoryType } from '@prisma/client';
 
 @Injectable()
 export class CategoriesService {
     constructor(private prisma: PrismaService) { }
+
+    private deriveCategoryType(data: { categoryType?: CategoryType; isMandatory?: boolean }) {
+        if (data.categoryType) {
+            return data.categoryType;
+        }
+
+        return data.isMandatory ? CategoryType.REQUIRED : CategoryType.OPTIONAL;
+    }
+
+    private validateParentType(parentType: CategoryType, childType: CategoryType) {
+        if (parentType !== childType) {
+            throw new BadRequestException('Parent category must have the same type');
+        }
+    }
 
     async findAll() {
         return this.prisma.equipmentCategory.findMany({
@@ -29,7 +43,7 @@ export class CategoriesService {
         });
     }
 
-    async create(data: { name: string; code: string; isMandatory?: boolean; parentId?: string }) {
+    async create(data: { name: string; code: string; isMandatory?: boolean; categoryType?: CategoryType; parentId?: string }) {
         // Check code uniqueness
         const existing = await this.prisma.equipmentCategory.findUnique({
             where: { code: data.code }
@@ -39,17 +53,33 @@ export class CategoriesService {
             throw new BadRequestException('Category with this code already exists');
         }
 
+        const categoryType = this.deriveCategoryType(data);
+
+        if (data.parentId) {
+            const parent = await this.prisma.equipmentCategory.findUnique({
+                where: { id: data.parentId },
+                select: { id: true, categoryType: true },
+            });
+
+            if (!parent) {
+                throw new BadRequestException('Parent category not found');
+            }
+
+            this.validateParentType(parent.categoryType, categoryType);
+        }
+
         return this.prisma.equipmentCategory.create({
             data: {
                 name: data.name,
                 code: data.code,
-                isMandatory: data.isMandatory ?? false,
+                categoryType,
+                isMandatory: categoryType === CategoryType.REQUIRED,
                 parentId: data.parentId
             }
         });
     }
 
-    async update(id: string, data: { name?: string; isMandatory?: boolean; parentId?: string | null }) {
+    async update(id: string, data: { name?: string; isMandatory?: boolean; categoryType?: CategoryType; parentId?: string | null }) {
         // Prevent circular dependency if parentId is updated
         if (data.parentId) {
             if (data.parentId === id) {
@@ -64,9 +94,42 @@ export class CategoriesService {
             }
         }
 
+        const currentCategory = await this.prisma.equipmentCategory.findUnique({
+            where: { id },
+            select: { id: true, categoryType: true, parentId: true },
+        });
+
+        if (!currentCategory) {
+            throw new BadRequestException('Category not found');
+        }
+
+        const categoryType = this.deriveCategoryType({
+            categoryType: data.categoryType,
+            isMandatory: data.isMandatory ?? (currentCategory.categoryType === CategoryType.REQUIRED),
+        });
+
+        const nextParentId = data.parentId === undefined ? currentCategory.parentId : data.parentId;
+
+        if (nextParentId) {
+            const parent = await this.prisma.equipmentCategory.findUnique({
+                where: { id: nextParentId },
+                select: { id: true, categoryType: true },
+            });
+
+            if (!parent) {
+                throw new BadRequestException('Parent category not found');
+            }
+
+            this.validateParentType(parent.categoryType, categoryType);
+        }
+
         return this.prisma.equipmentCategory.update({
             where: { id },
-            data
+            data: {
+                ...data,
+                categoryType,
+                isMandatory: categoryType === CategoryType.REQUIRED,
+            }
         });
     }
 
@@ -86,7 +149,7 @@ export class CategoriesService {
         if (category._count.children > 0) {
             await this.prisma.equipmentCategory.updateMany({
                 where: { parentId: id },
-                data: { parentId: (category as any).parentId ?? null }
+                data: { parentId: category.parentId ?? null }
             });
         }
 

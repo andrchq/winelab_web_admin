@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { SystemPermission } from '../auth/permissions';
+import { CategoryType } from '@prisma/client';
 
 @Controller('categories')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -25,7 +26,7 @@ export class CategoriesController {
 
     @Post()
     @RequirePermissions(SystemPermission.CATEGORY_MANAGE)
-    create(@Body() body: { name: string; code: string; isMandatory?: boolean; parentId?: string }) {
+    create(@Body() body: { name: string; code: string; isMandatory?: boolean; categoryType?: CategoryType; parentId?: string }) {
         return this.categoriesService.create(body);
     }
 
@@ -33,7 +34,7 @@ export class CategoriesController {
     @RequirePermissions(SystemPermission.CATEGORY_MANAGE)
     update(
         @Param('id') id: string,
-        @Body() body: { name?: string; isMandatory?: boolean; parentId?: string | null }
+        @Body() body: { name?: string; isMandatory?: boolean; categoryType?: CategoryType; parentId?: string | null }
     ) {
         return this.categoriesService.update(id, body);
     }

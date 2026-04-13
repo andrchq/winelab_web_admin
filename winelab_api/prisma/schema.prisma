@@ -69,6 +69,12 @@ enum ProductAccountingType {
   QUANTITY
 }
 
+enum CategoryType {
+  REQUIRED
+  OPTIONAL
+  ACCESSORY
+}
+
 enum StoreStatus {
   OPEN // Открыт
   CLOSED // Закрыт
@@ -180,6 +186,7 @@ model EquipmentCategory {
   code        String  @unique // SYSTEM_CODE (e.g. SERVER)
   name        String // Display Name (e.g. Сервер)
   isMandatory Boolean @default(false)
+  categoryType CategoryType @default(OPTIONAL)
 
   // Hierarchy
   parentId String?

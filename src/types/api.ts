@@ -53,6 +53,7 @@ export interface EquipmentCategory {
     code: string;
     name: string;
     isMandatory: boolean;
+    categoryType: 'REQUIRED' | 'OPTIONAL' | 'ACCESSORY';
     parentId?: string;
     parent?: EquipmentCategory;
     children?: EquipmentCategory[];

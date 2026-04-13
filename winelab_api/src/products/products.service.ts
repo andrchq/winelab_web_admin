@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ProductAccountingType } from '@prisma/client';
+import { AssetProcess, Prisma, ProductAccountingType } from '@prisma/client';
 
 @Injectable()
 export class ProductsService {
@@ -13,11 +13,25 @@ export class ProductsService {
 
         const category = await this.prisma.equipmentCategory.findUnique({
             where: { id: categoryId },
-            select: { code: true, parent: { select: { code: true } } },
+            select: {
+                code: true,
+                categoryType: true,
+                parent: {
+                    select: {
+                        code: true,
+                        categoryType: true,
+                    },
+                },
+            },
         });
 
-        const categoryCodes = [category?.code, category?.parent?.code].filter(Boolean);
-        if (categoryCodes.includes('ACCESSORY')) {
+        const isAccessoryCategory =
+            category?.categoryType === 'ACCESSORY' ||
+            category?.parent?.categoryType === 'ACCESSORY' ||
+            category?.code === 'ACCESSORY' ||
+            category?.parent?.code === 'ACCESSORY';
+
+        if (isAccessoryCategory) {
             return ProductAccountingType.QUANTITY;
         }
 
@@ -25,7 +39,7 @@ export class ProductsService {
     }
 
     async findAll(categoryCode?: string) {
-        const where: any = { isActive: true };
+        const where: Prisma.ProductWhereInput = { isActive: true };
 
         if (categoryCode) {
             where.category = { code: categoryCode };
@@ -46,7 +60,7 @@ export class ProductsService {
                         condition: { not: 'DECOMMISSIONED' },
                         storeId: null,
                         warehouseId: { not: null },
-                        processStatus: { in: ['AVAILABLE', 'RESERVED'] as any },
+                        processStatus: { in: [AssetProcess.AVAILABLE, AssetProcess.RESERVED] },
                     },
                     select: {
                         processStatus: true,
@@ -67,6 +81,8 @@ export class ProductsService {
             const totalReserved = product.accountingType === ProductAccountingType.QUANTITY ? stockItemsReserved : assetsReserved;
             const totalAvailable = totalStock - totalReserved;
             const { stockItems, assets, ...rest } = product;
+            void stockItems;
+            void assets;
 
             return {
                 ...rest,
@@ -97,13 +113,15 @@ export class ProductsService {
         return product;
     }
 
-    async create(data: { name: string; sku: string; category: string; description?: string }) {
-        const { category, ...rest } = data as any;
-        if ('categoryId' in rest) {
-            delete rest.categoryId;
+    async create(data: { name: string; sku: string; category?: string; categoryId?: string; description?: string }) {
+        const { category, categoryId, ...rest } = data;
+        const resolvedCategoryId = category ?? categoryId;
+
+        if (!resolvedCategoryId) {
+            throw new NotFoundException('Категория не указана');
         }
 
-        const accountingType = await this.resolveAccountingType(category);
+        const accountingType = await this.resolveAccountingType(resolvedCategoryId);
 
         try {
             return await this.prisma.product.create({
@@ -111,29 +129,27 @@ export class ProductsService {
                     ...rest,
                     accountingType,
                     category: {
-                        connect: { id: category }
+                        connect: { id: resolvedCategoryId }
                     }
                 }
             });
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Error creating product:', error);
-            // Log full error details for debugging
-            if (error.code) console.error('Prisma Error Code:', error.code);
-            if (error.meta) console.error('Prisma Error Meta:', error.meta);
+            if (error instanceof Prisma.PrismaClientKnownRequestError) {
+                console.error('Prisma Error Code:', error.code);
+                console.error('Prisma Error Meta:', error.meta);
+            }
             throw error; // Re-throw to let NestJS handle it (Internal Server Error is default)
         }
     }
 
-    async update(id: string, data: { name?: string; category?: string; description?: string }) {
+    async update(id: string, data: { name?: string; category?: string; categoryId?: string; description?: string }) {
         const existing = await this.findById(id);
-        const { category, ...rest } = data as any;
+        const { category, categoryId, ...rest } = data;
+        const resolvedCategoryId = category ?? categoryId;
 
-        if ('categoryId' in rest) {
-            delete rest.categoryId;
-        }
-
-        const accountingType = category
-            ? await this.resolveAccountingType(category, existing.accountingType)
+        const accountingType = resolvedCategoryId
+            ? await this.resolveAccountingType(resolvedCategoryId, existing.accountingType)
             : existing.accountingType;
 
         return this.prisma.product.update({
@@ -141,9 +157,9 @@ export class ProductsService {
             data: {
                 ...rest,
                 accountingType,
-                ...(category && {
+                ...(resolvedCategoryId && {
                     category: {
-                        connect: { id: category }
+                        connect: { id: resolvedCategoryId }
                     }
                 })
             },

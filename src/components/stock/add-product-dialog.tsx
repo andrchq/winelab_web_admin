@@ -18,6 +18,13 @@ interface AddProductDialogProps {
 import { useCategories, useProducts } from "@/lib/hooks";
 import type { Product } from "@/types/api";
 
+function getCategoryTypeLabel(categoryType?: 'REQUIRED' | 'OPTIONAL' | 'ACCESSORY', isMandatory?: boolean) {
+    if (categoryType === "ACCESSORY") return "Сопутствующая";
+    if (categoryType === "OPTIONAL") return "Необязательная";
+    if (categoryType === "REQUIRED" || isMandatory) return "Обязательная";
+    return null;
+}
+
 export function AddProductDialog({ onSuccess }: AddProductDialogProps) {
     const { hasRole } = useAuth();
     const [open, setOpen] = useState(false);
@@ -241,8 +248,10 @@ export function AddProductDialog({ onSuccess }: AddProductDialogProps) {
                                                 <SelectItem key={cat.id} value={cat.id}>
                                                     <div className="flex items-center gap-2">
                                                         <span>{cat.name}</span>
-                                                        {cat.isMandatory && (
-                                                            <span className="text-xs text-muted-foreground">(Обязательное)</span>
+                                                        {getCategoryTypeLabel(cat.categoryType, cat.isMandatory) && (
+                                                            <span className="text-xs text-muted-foreground">
+                                                                ({getCategoryTypeLabel(cat.categoryType, cat.isMandatory)})
+                                                            </span>
                                                         )}
                                                     </div>
                                                 </SelectItem>

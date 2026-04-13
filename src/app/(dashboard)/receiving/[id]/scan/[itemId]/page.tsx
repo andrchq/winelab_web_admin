@@ -151,7 +151,7 @@ export default function ScanningPage() {
         }
     };
 
-    const isConsumable = () => item?.product?.category?.code === "ACCESSORY";
+    const isConsumable = () => item?.product?.accountingType === "QUANTITY";
 
     if (!session || !item) return <div className="p-8">Загрузка...</div>;
 
