@@ -99,10 +99,31 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
     const { data: roles, isLoading: rolesLoading } = useRoles();
     const { data: warehouses, isLoading: warehousesLoading } = useWarehouses();
     const [isSaving, setIsSaving] = useState(false);
-    const { register, handleSubmit, reset, setValue, setError, clearErrors, watch, formState: { errors } } = useForm<FormData>();
+    const [selectedRoleValue, setSelectedRoleValue] = useState("");
+    const [selectedWarehouseValue, setSelectedWarehouseValue] = useState("");
+    const {
+        register,
+        handleSubmit,
+        reset,
+        setValue,
+        setError,
+        clearErrors,
+        watch,
+        getValues,
+        formState: { errors },
+    } = useForm<FormData>({
+        defaultValues: {
+            name: "",
+            email: "",
+            password: "",
+            phone: "",
+            roleId: "",
+            warehouseId: "",
+            isActive: true,
+        },
+    });
     const passwordValue = watch("password") || "";
-    const selectedRoleId = watch("roleId") || "";
-    const selectedRoleName = roles.find((role: Role) => role.id === selectedRoleId)?.name;
+    const selectedRoleName = roles.find((role: Role) => role.id === selectedRoleValue)?.name;
     const availableRoles = roles.filter((role) => !(role.name === "USER" && roles.some((item) => item.name === "SUPPORT")));
 
     useEffect(() => {
@@ -112,18 +133,23 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
 
         if (user) {
             const roleId = user.role && typeof user.role === "object" ? user.role.id : "";
+            const warehouseId = user.warehouse?.id || "";
+            setSelectedRoleValue(roleId);
+            setSelectedWarehouseValue(warehouseId);
             reset({
                 name: user.name,
                 email: user.email,
                 phone: user.phone || "",
                 password: "",
                 roleId,
-                warehouseId: user.warehouse?.id || "",
+                warehouseId,
                 isActive: user.isActive,
             });
             return;
         }
 
+        setSelectedRoleValue("");
+        setSelectedWarehouseValue("");
         reset({
             name: "",
             email: "",
@@ -137,6 +163,7 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
 
     useEffect(() => {
         if (selectedRoleName !== "WAREHOUSE") {
+            setSelectedWarehouseValue("");
             setValue("warehouseId", "");
             clearErrors("warehouseId");
         }
@@ -159,14 +186,22 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
     };
 
     const onSubmit = async (data: FormData) => {
-        if (selectedRoleName === "WAREHOUSE" && !data.warehouseId) {
+        const roleId = selectedRoleValue || getValues("roleId") || data.roleId || "";
+        const warehouseId = selectedWarehouseValue || getValues("warehouseId") || data.warehouseId || "";
+        const roleName = selectedRoleName || roles.find((role: Role) => role.id === roleId)?.name;
+
+        if (roleName === "WAREHOUSE" && !warehouseId) {
             setError("warehouseId", { type: "required", message: TEXT.warehouseRequired });
             return;
         }
 
         try {
             setIsSaving(true);
-            await onSave(data);
+            await onSave({
+                ...data,
+                roleId,
+                warehouseId: warehouseId || undefined,
+            });
             onOpenChange(false);
         } catch (error) {
             console.error(error);
@@ -216,15 +251,6 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                    <input
-                        type="hidden"
-                        {...register("roleId", { required: TEXT.rolePlaceholder })}
-                    />
-                    <input
-                        type="hidden"
-                        {...register("warehouseId")}
-                    />
-
                     <div className="space-y-2">
                         <Label htmlFor="name">{TEXT.nameLabel}</Label>
                         <Input
@@ -304,8 +330,11 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
                     <div className="space-y-2">
                         <Label htmlFor="role">{TEXT.roleLabel}</Label>
                         <Select
-                            onValueChange={(value) => setValue("roleId", value, { shouldValidate: true, shouldDirty: true })}
-                            value={selectedRoleId}
+                            onValueChange={(value) => {
+                                setSelectedRoleValue(value);
+                                setValue("roleId", value, { shouldValidate: true, shouldDirty: true });
+                            }}
+                            value={selectedRoleValue}
                         >
                             <SelectTrigger>
                                 <SelectValue placeholder={TEXT.rolePlaceholder} />
@@ -317,9 +346,9 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
                                     availableRoles.map((role: Role) => {
                                         const presentation = getRolePresentation(role);
                                         return (
-                                        <SelectItem key={role.id} value={role.id}>
-                                            {presentation.code} {presentation.description && <span className="text-muted-foreground text-xs ml-2">({presentation.description})</span>}
-                                        </SelectItem>
+                                            <SelectItem key={role.id} value={role.id}>
+                                                {presentation.code} {presentation.description && <span className="ml-2 text-xs text-muted-foreground">({presentation.description})</span>}
+                                            </SelectItem>
                                         );
                                     })
                                 )}
@@ -333,10 +362,11 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
                             <Label htmlFor="warehouse">{TEXT.warehouseLabel}</Label>
                             <Select
                                 onValueChange={(value) => {
+                                    setSelectedWarehouseValue(value);
                                     setValue("warehouseId", value, { shouldValidate: true, shouldDirty: true });
                                     clearErrors("warehouseId");
                                 }}
-                                value={watch("warehouseId") || ""}
+                                value={selectedWarehouseValue}
                             >
                                 <SelectTrigger>
                                     <SelectValue placeholder={TEXT.warehousePlaceholder} />

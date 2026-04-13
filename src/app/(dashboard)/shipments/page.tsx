@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { Plus, Search, Calendar, PackageCheck, AlertCircle, FileText, ArrowRight, Check, MapPin, AlertTriangle, Loader2, FileSpreadsheet, Keyboard, Truck, Send, Package, Trash2 } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { Plus, Search, Calendar, AlertCircle, FileText, ArrowRight, Check, MapPin, AlertTriangle, Loader2, FileSpreadsheet, Keyboard, Truck, Send, Package, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { useWarehouses } from "@/lib/hooks";
 import { shippingService, ShippingSession } from "@/lib/shipping-service";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,6 +14,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 
+type ShipmentBadgeVariant = "secondary" | "default" | "info" | "success" | "outline";
+
 export default function ShipmentsPage() {
     const router = useRouter();
     const { data: warehouses } = useWarehouses();
@@ -22,6 +23,7 @@ export default function ShipmentsPage() {
     const isAdmin = hasRole(['ADMIN']);
     const [sessions, setSessions] = useState<ShippingSession[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -34,6 +36,10 @@ export default function ShipmentsPage() {
             try {
                 const data = await shippingService.getAll();
                 setSessions(data);
+                setLoadError(null);
+            } catch (error) {
+                console.error("Failed to load shipments", error);
+                setLoadError(error instanceof Error ? error.message : "Не удалось загрузить отгрузки");
             } finally {
                 setIsLoading(false);
             }
@@ -58,12 +64,12 @@ export default function ShipmentsPage() {
         }
     };
 
-    const getWarehouseName = (id?: string) => {
+    const getWarehouseName = useCallback((id?: string) => {
         if (!id) return "Склад не указан";
         return warehouses?.find(w => w.id === id)?.name || id;
-    };
+    }, [warehouses]);
 
-    const getStatusColor = (status: string) => {
+    const getStatusColor = (status: string): ShipmentBadgeVariant => {
         switch (status) {
             case 'draft': return "secondary";
             case 'picking': return "default";
@@ -109,7 +115,7 @@ export default function ShipmentsPage() {
 
             return matchesSearch && matchesStatus && matchesWarehouse && matchesType && matchesProblems;
         });
-    }, [sessions, searchTerm, statusFilter, warehouseFilter, typeFilter, problemsOnly, warehouses]);
+    }, [sessions, searchTerm, statusFilter, warehouseFilter, typeFilter, problemsOnly, getWarehouseName]);
 
     const statusOptions = [
         { value: 'all', label: 'Все', count: sessions.length },
@@ -197,7 +203,7 @@ export default function ShipmentsPage() {
 
                             {/* Type Filter */}
                             <div className="w-full md:w-48">
-                                <Select value={typeFilter} onValueChange={(v: any) => setTypeFilter(v)}>
+                                <Select value={typeFilter} onValueChange={(v: "all" | "manual" | "file") => setTypeFilter(v)}>
                                     <SelectTrigger className="h-12 md:h-14 rounded-2xl bg-muted/20 border-border/50 text-left px-4 hover:bg-muted/30 transition-all font-semibold">
                                         <div className="flex items-center gap-2 truncate">
                                             {typeFilter === 'manual' ? <Keyboard className="h-4 w-4 shrink-0 text-primary/70" /> :
@@ -246,6 +252,17 @@ export default function ShipmentsPage() {
 
                 {/* Sessions List */}
                 <div className="grid gap-3 md:gap-4">
+                    {loadError && (
+                        <Card className="border-destructive/30 bg-destructive/5">
+                            <CardContent className="flex items-start gap-3 p-4 text-sm">
+                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                                <div>
+                                    <p className="font-medium text-foreground">Не удалось загрузить список отгрузок</p>
+                                    <p className="text-muted-foreground">{loadError}</p>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
                     {filteredSessions.map((session) => {
                         const isFileBased = session.type === 'file';
                         const totalExpected = session.items.reduce((s, i) => s + (i.expectedQuantity || 0), 0);
@@ -296,7 +313,7 @@ export default function ShipmentsPage() {
                                                             {session.destination}
                                                         </span>
                                                     </div>
-                                                    <Badge className="font-bold text-[10px] uppercase tracking-wider ml-1" variant={getStatusColor(session.status) as any}>{getStatusText(session.status)}</Badge>
+                                                    <Badge className="font-bold text-[10px] uppercase tracking-wider ml-1" variant={getStatusColor(session.status)}>{getStatusText(session.status)}</Badge>
                                                     {hasShortage && (
                                                         <Badge className="font-bold text-[10px] uppercase tracking-wider ml-1 bg-orange-500 hover:bg-orange-600 text-white border-none shadow-sm">Недосбор</Badge>
                                                     )}

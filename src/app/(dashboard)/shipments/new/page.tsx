@@ -126,23 +126,23 @@ export default function NewShipmentPage() {
     const handleNext = async () => {
         if (step === "setup") {
             if (!warehouseId) {
-                toast.error("Р’С‹Р±РµСЂРёС‚Рµ СЃРєР»Р°Рґ РѕС‚РїСЂР°РІРёС‚РµР»СЊ");
+                toast.error("Выберите склад отправитель");
                 return;
             }
             if (!destinationType) {
-                toast.error("Р’С‹Р±РµСЂРёС‚Рµ С‚РёРї РїРѕР»СѓС‡Р°С‚РµР»СЏ");
+                toast.error("Выберите тип получателя");
                 return;
             }
             if (destinationType === 'store' && !destinationId) {
-                toast.error("Р’С‹Р±РµСЂРёС‚Рµ РјР°РіР°Р·РёРЅ");
+                toast.error("Выберите магазин");
                 return;
             }
             if (destinationType === 'warehouse' && !destinationId) {
-                toast.error("Р’С‹Р±РµСЂРёС‚Рµ СЃРєР»Р°Рґ РїРѕР»СѓС‡Р°С‚РµР»СЊ");
+                toast.error("Выберите склад получатель");
                 return;
             }
             if (destinationType === 'other' && !manualDestination) {
-                toast.error("РЈРєР°Р¶РёС‚Рµ РїРѕР»СѓС‡Р°С‚РµР»СЏ");
+                toast.error("Укажите получателя");
                 return;
             }
 
@@ -186,7 +186,7 @@ export default function NewShipmentPage() {
             // Check if there are unmapped items
             const unmappedCount = parsedItems.length - Object.keys(mappings).length;
             if (unmappedCount > 0) {
-                if (!confirm(`РЈ РІР°СЃ РѕСЃС‚Р°Р»РѕСЃСЊ ${unmappedCount} РЅРµСЂР°СЃРїРѕР·РЅР°РЅРЅС‹С… РїРѕР·РёС†РёР№. РћРЅРё Р±СѓРґСѓС‚ РїСЂРѕРїСѓС‰РµРЅС‹. РџСЂРѕРґРѕР»Р¶РёС‚СЊ?`)) {
+                if (!confirm(`У вас осталось ${unmappedCount} нераспознанных позиций. Они будут пропущены. Продолжить?`)) {
                     return;
                 }
             }
@@ -199,8 +199,8 @@ export default function NewShipmentPage() {
     };
 
     const getDestinationName = () => {
-        if (destinationType === 'store') return stores?.find(s => s.id === destinationId)?.name || 'РњР°РіР°Р·РёРЅ';
-        if (destinationType === 'warehouse') return warehouses?.find(w => w.id === destinationId)?.name || 'РЎРєР»Р°Рґ';
+        if (destinationType === 'store') return stores?.find(s => s.id === destinationId)?.name || 'Магазин';
+        if (destinationType === 'warehouse') return warehouses?.find(w => w.id === destinationId)?.name || 'Склад';
         return manualDestination;
     };
 
@@ -255,11 +255,11 @@ export default function NewShipmentPage() {
                 invoiceNumber: undefined,
                 type: 'manual'
             });
-            toast.success("РЎРµСЃСЃРёСЏ РѕС‚РіСЂСѓР·РєРё СЃРѕР·РґР°РЅР°");
+            toast.success("Сессия отгрузки создана");
             router.push(`/shipments/${session.id}`);
         } catch (e) {
             console.error(e);
-            toast.error("РћС€РёР±РєР° РїСЂРё СЃРѕР·РґР°РЅРёРё СЃРµСЃСЃРёРё");
+            toast.error("Ошибка при создании сессии");
         }
     };
 
@@ -293,11 +293,11 @@ export default function NewShipmentPage() {
                 invoiceNumber: file?.name,
                 type: 'file'
             });
-            toast.success("РЎРµСЃСЃРёСЏ РѕС‚РіСЂСѓР·РєРё СЃРѕР·РґР°РЅР°");
+            toast.success("Сессия отгрузки создана");
             router.push(`/shipments/${session.id}`);
         } catch (e) {
             console.error(e);
-            toast.error("РћС€РёР±РєР° РїСЂРё СЃРѕР·РґР°РЅРёРё СЃРµСЃСЃРёРё");
+            toast.error("Ошибка при создании сессии");
         }
     };
 
@@ -323,19 +323,19 @@ export default function NewShipmentPage() {
                             <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center border ${step === 'setup' ? 'border-primary bg-primary/10' : 'border-green-500 bg-green-500/10'}`}>
                                 {step !== 'setup' ? <Check className="h-3 w-3" /> : '1'}
                             </div>
-                            <span className="hidden sm:inline">РќР°СЃС‚СЂРѕР№РєР°</span>
+                            <span className="hidden sm:inline">Настройка</span>
                         </div>
                         <div className="h-[1px] bg-border flex-1" />
                         <div className={`flex items-center gap-1 md:gap-2 ${step === 'mapping' ? 'text-primary font-bold' : step === 'review' ? 'text-green-600' : 'text-muted-foreground'}`}>
                             <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center border ${step === 'mapping' ? 'border-primary bg-primary/10' : step === 'review' ? 'border-green-500 bg-green-500/10' : 'border-border'}`}>
                                 {step === 'review' ? <Check className="h-3 w-3" /> : '2'}
                             </div>
-                            <span className="hidden sm:inline">РњР°РїРїРёРЅРі</span>
+                            <span className="hidden sm:inline">Маппинг</span>
                         </div>
                         <div className="h-[1px] bg-border flex-1" />
                         <div className={`flex items-center gap-1 md:gap-2 ${step === 'review' ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
                             <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center border ${step === 'review' ? 'border-primary bg-primary/10' : 'border-border'}`}>3</div>
-                            <span className="hidden sm:inline">РџСЂРѕРІРµСЂРєР°</span>
+                            <span className="hidden sm:inline">Проверка</span>
                         </div>
                     </div>
                 </div>
@@ -346,17 +346,17 @@ export default function NewShipmentPage() {
                         <CardHeader className="px-2 md:px-6">
                             <CardTitle className="flex items-center gap-2">
                                 <Truck className="h-5 w-5 text-primary" />
-                                РќРѕРІР°СЏ РѕС‚РіСЂСѓР·РєР°
+                                Новая отгрузка
                             </CardTitle>
-                            <CardDescription>Р’С‹Р±РµСЂРёС‚Рµ СЃРєР»Р°Рґ, РїРѕР»СѓС‡Р°С‚РµР»СЏ Рё Р·Р°РіСЂСѓР·РёС‚Рµ Р·Р°СЏРІРєСѓ РёР»Рё СЃРѕР·РґР°Р№С‚Рµ Р±РµР· С„Р°Р№Р»Р°.</CardDescription>
+                            <CardDescription>Выберите склад, получателя и загрузите заявку или создайте без файла.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4 md:space-y-6 px-2 md:px-6">
                             {/* Warehouse */}
                             <div className="space-y-2">
-                                <Label>РЎРєР»Р°Рґ РѕС‚РїСЂР°РІРёС‚РµР»СЊ</Label>
+                                <Label>Склад отправитель</Label>
                                 <Select value={warehouseId} onValueChange={setWarehouseId}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Р’С‹Р±РµСЂРёС‚Рµ СЃРєР»Р°Рґ" />
+                                        <SelectValue placeholder="Выберите склад" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {warehouses?.map(w => (
@@ -368,7 +368,7 @@ export default function NewShipmentPage() {
 
                             {/* Destination Type */}
                             <div className="space-y-2">
-                                <Label>РўРёРї РїРѕР»СѓС‡Р°С‚РµР»СЏ</Label>
+                                <Label>Тип получателя</Label>
                                 <Select value={destinationType} onValueChange={(v: "store" | "warehouse" | "other") => {
                                     setDestinationType(v);
                                     setDestinationId(v === "store" && request?.storeId ? request.storeId : "");
@@ -378,9 +378,9 @@ export default function NewShipmentPage() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="store">РњР°РіР°Р·РёРЅ</SelectItem>
-                                        <SelectItem value="warehouse">Р”СЂСѓРіРѕР№ СЃРєР»Р°Рґ</SelectItem>
-                                        <SelectItem value="other">Р”СЂСѓРіРѕРµ</SelectItem>
+                                        <SelectItem value="store">Магазин</SelectItem>
+                                        <SelectItem value="warehouse">Другой склад</SelectItem>
+                                        <SelectItem value="other">Другое</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -388,7 +388,7 @@ export default function NewShipmentPage() {
                             {/* Destination Selection */}
                             {destinationType === 'store' && (
                                 <div className="space-y-2">
-                                    <Label>РњР°РіР°Р·РёРЅ</Label>
+                                    <Label>Магазин</Label>
                                     <Popover open={openStoreCombobox} onOpenChange={setOpenStoreCombobox}>
                                         <PopoverTrigger asChild>
                                             <Button
@@ -399,15 +399,15 @@ export default function NewShipmentPage() {
                                             >
                                                 {destinationId
                                                     ? stores?.find((store) => store.id === destinationId)?.name
-                                                    : "Р’С‹Р±РµСЂРёС‚Рµ РјР°РіР°Р·РёРЅ..."}
+                                                    : "Выберите магазин..."}
                                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
                                             <Command>
-                                                <CommandInput placeholder="РџРѕРёСЃРє РјР°РіР°Р·РёРЅР° (РЅР°Р·РІР°РЅРёРµ РёР»Рё РЅРѕРјРµСЂ)..." />
+                                                <CommandInput placeholder="Поиск магазина (название или номер)..." />
                                                 <CommandList>
-                                                    <CommandEmpty>РњР°РіР°Р·РёРЅ РЅРµ РЅР°Р№РґРµРЅ.</CommandEmpty>
+                                                    <CommandEmpty>Магазин не найден.</CommandEmpty>
                                                     <CommandGroup>
                                                         {stores?.map((store) => (
                                                             <CommandItem
@@ -437,10 +437,10 @@ export default function NewShipmentPage() {
 
                             {destinationType === 'warehouse' && (
                                 <div className="space-y-2">
-                                    <Label>РЎРєР»Р°Рґ РїРѕР»СѓС‡Р°С‚РµР»СЊ</Label>
+                                    <Label>Склад получатель</Label>
                                     <Select value={destinationId} onValueChange={setDestinationId}>
                                         <SelectTrigger>
-                                            <SelectValue placeholder="Р’С‹Р±РµСЂРёС‚Рµ СЃРєР»Р°Рґ" />
+                                            <SelectValue placeholder="Выберите склад" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {warehouses?.filter(w => w.id !== warehouseId).map(w => (
@@ -453,9 +453,9 @@ export default function NewShipmentPage() {
 
                             {destinationType === 'other' && (
                                 <div className="space-y-2">
-                                    <Label>РќР°Р·РІР°РЅРёРµ РїРѕР»СѓС‡Р°С‚РµР»СЏ</Label>
+                                    <Label>Название получателя</Label>
                                     <Input
-                                        placeholder="РќР°РїСЂРёРјРµСЂ: РћС„РёСЃ"
+                                        placeholder="Например: Офис"
                                         value={manualDestination}
                                         onChange={e => setManualDestination(e.target.value)}
                                     />
@@ -464,9 +464,9 @@ export default function NewShipmentPage() {
 
                             {/* Request Number */}
                             <div className="space-y-2">
-                                <Label>РќРѕРјРµСЂ Р·Р°СЏРІРєРё (РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ)</Label>
+                                <Label>Номер заявки (необязательно)</Label>
                                 <Input
-                                    placeholder="РќР°РїСЂРёРјРµСЂ, REQ-12345"
+                                    placeholder="Например, REQ-12345"
                                     value={requestNumber}
                                     onChange={e => setRequestNumber(e.target.value)}
                                     disabled={Boolean(requestId)}
@@ -475,7 +475,7 @@ export default function NewShipmentPage() {
 
                             {/* File Upload */}
                             <div className="space-y-2 pt-2 md:pt-4 border-t">
-                                <Label className="text-base font-medium">Р¤Р°Р№Р» Р·Р°СЏРІРєРё</Label>
+                                <Label className="text-base font-medium">Файл заявки</Label>
                                 <div className="border-2 border-dashed rounded-xl p-4 md:p-8 text-center hover:bg-muted/50 transition-colors relative">
                                     <input
                                         type="file"
@@ -488,11 +488,11 @@ export default function NewShipmentPage() {
                                             <Upload className="h-6 w-6 md:h-8 md:w-8" />
                                         </div>
                                         <div className="text-sm md:text-base font-medium">
-                                            {file ? file.name : "РќР°Р¶РјРёС‚Рµ РґР»СЏ Р·Р°РіСЂСѓР·РєРё С„Р°Р№Р»Р°"}
+                                            {file ? file.name : "Нажмите для загрузки файла"}
                                         </div>
                                         {!file && (
                                             <div className="text-xs md:text-sm text-muted-foreground">
-                                                Excel, CSV РёР»Рё JSON
+                                                Excel, CSV или JSON
                                             </div>
                                         )}
                                     </div>
@@ -519,7 +519,7 @@ export default function NewShipmentPage() {
                                 variant="ghost"
                                 onClick={handleCancel}
                             >
-                                РћС‚РјРµРЅР°
+                                Отмена
                             </Button>
                             <Button
                                 className="w-full md:w-1/2 h-10 md:h-12 order-2"
@@ -528,7 +528,7 @@ export default function NewShipmentPage() {
                                 disabled={isProcessing || !isFormValid}
                             >
                                 <Plus className="mr-2 h-4 w-4" />
-                                РћС„РѕСЂРјРёС‚СЊ Р±РµР· С„Р°Р№Р»Р°
+                                Оформить без файла
                             </Button>
                             <Button
                                 className="w-full md:w-1/2 h-10 md:h-12 order-1 md:order-3"
@@ -538,11 +538,11 @@ export default function NewShipmentPage() {
                                 {isProcessing ? (
                                     <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        РћР±СЂР°Р±РѕС‚РєР°...
+                                        Обработка...
                                     </>
                                 ) : (
                                     <>
-                                        Р”Р°Р»РµРµ
+                                        Далее
                                         <ChevronRight className="ml-2 h-4 w-4" />
                                     </>
                                 )}
@@ -555,16 +555,16 @@ export default function NewShipmentPage() {
                 {step === "mapping" && (
                     <Card className="border-0 shadow-none md:border md:shadow-sm">
                         <CardHeader className="px-2 md:px-6">
-                            <CardTitle>РЎРѕРїРѕСЃС‚Р°РІР»РµРЅРёРµ С‚РѕРІР°СЂРѕРІ</CardTitle>
+                            <CardTitle>Сопоставление товаров</CardTitle>
                             <CardDescription>
-                                РњС‹ РЅР°С€Р»Рё {parsedItems.length} РїРѕР·РёС†РёР№. РџРѕР¶Р°Р»СѓР№СЃС‚Р°, СЃРѕРїРѕСЃС‚Р°РІСЊС‚Рµ РёС… СЃ РєР°С‚Р°Р»РѕРіРѕРј.
+                                Мы нашли {parsedItems.length} позиций. Пожалуйста, сопоставьте их с каталогом.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4 px-2 md:px-6">
                             <div className="hidden md:grid grid-cols-12 gap-4 text-sm font-medium text-muted-foreground pb-2 border-b">
-                                <div className="col-span-5">РР· С„Р°Р№Р»Р°</div>
-                                <div className="col-span-2 text-center">РљРѕР»-РІРѕ</div>
-                                <div className="col-span-5">Р’ РєР°С‚Р°Р»РѕРіРµ</div>
+                                <div className="col-span-5">Из файла</div>
+                                <div className="col-span-2 text-center">Кол-во</div>
+                                <div className="col-span-5">В каталоге</div>
                             </div>
 
                             <div className="space-y-4 md:space-y-2 max-h-[60vh] overflow-y-auto pr-2">
@@ -577,8 +577,8 @@ export default function NewShipmentPage() {
                                                 {item.sku && <div className="text-xs text-muted-foreground font-mono">{item.sku}</div>}
                                             </div>
                                             <div className="col-span-2 flex items-center justify-between md:justify-center border-t md:border-0 pt-2 md:pt-0">
-                                                <span className="md:hidden text-xs text-muted-foreground">РљРѕР»-РІРѕ:</span>
-                                                <Badge variant="secondary">{item.quantity} С€С‚</Badge>
+                                                <span className="md:hidden text-xs text-muted-foreground">Кол-во:</span>
+                                                <Badge variant="secondary">{item.quantity} шт</Badge>
                                             </div>
                                             <div className="col-span-5 pt-2 md:pt-0">
                                                 <Select
@@ -586,7 +586,7 @@ export default function NewShipmentPage() {
                                                     onValueChange={(val) => setMappings(prev => ({ ...prev, [item.originalName]: val }))}
                                                 >
                                                     <SelectTrigger className={`h-9 ${!isMapped ? 'border-orange-300 dark:border-orange-700' : 'border-green-200 dark:border-green-800'}`}>
-                                                        <SelectValue placeholder="Р’С‹Р±РµСЂРёС‚Рµ С‚РѕРІР°СЂ..." />
+                                                        <SelectValue placeholder="Выберите товар..." />
                                                     </SelectTrigger>
                                                     <SelectContent>
                                                         {products?.map(p => (
@@ -601,9 +601,9 @@ export default function NewShipmentPage() {
                             </div>
                         </CardContent>
                         <CardFooter className="px-2 md:px-6 flex justify-between">
-                            <Button variant="ghost" onClick={() => setStep("setup")}>РќР°Р·Р°Рґ</Button>
+                            <Button variant="ghost" onClick={() => setStep("setup")}>Назад</Button>
                             <Button onClick={handleNext}>
-                                Р”Р°Р»РµРµ <ChevronRight className="ml-2 h-4 w-4" />
+                                Далее <ChevronRight className="ml-2 h-4 w-4" />
                             </Button>
                         </CardFooter>
                     </Card>
@@ -613,36 +613,36 @@ export default function NewShipmentPage() {
                 {step === "review" && (
                     <Card className="border-0 shadow-none md:border md:shadow-sm">
                         <CardHeader className="px-2 md:px-6">
-                            <CardTitle>РџСЂРѕРІРµСЂРєР° РґР°РЅРЅС‹С…</CardTitle>
-                            <CardDescription>РџСЂРѕРІРµСЂСЊС‚Рµ РёРЅС„РѕСЂРјР°С†РёСЋ РїРµСЂРµРґ СЃРѕР·РґР°РЅРёРµРј СЃРµСЃСЃРёРё</CardDescription>
+                            <CardTitle>Проверка данных</CardTitle>
+                            <CardDescription>Проверьте информацию перед созданием сессии</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6 px-2 md:px-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-1">
-                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">РћС‚РєСѓРґР°</Label>
+                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Откуда</Label>
                                     <div className="font-medium text-lg">{warehouses?.find(w => w.id === warehouseId)?.name}</div>
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">РљСѓРґР°</Label>
+                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Куда</Label>
                                     <div className="font-medium text-lg flex items-center gap-2">
                                         <MapPin className="h-4 w-4 text-primary" />
                                         {getDestinationName()}
                                     </div>
                                     <div className="text-sm text-muted-foreground">
-                                        {destinationType === 'store' ? 'РњР°РіР°Р·РёРЅ' : destinationType === 'warehouse' ? 'РЎРєР»Р°Рґ' : 'РџСЂРѕС‡РµРµ'}
+                                        {destinationType === 'store' ? 'Магазин' : destinationType === 'warehouse' ? 'Склад' : 'Прочее'}
                                     </div>
                                 </div>
                                 {requestNumber && (
                                     <div className="space-y-1">
-                                        <Label className="text-xs text-muted-foreground uppercase tracking-wider">РќРѕРјРµСЂ Р·Р°СЏРІРєРё</Label>
+                                        <Label className="text-xs text-muted-foreground uppercase tracking-wider">Номер заявки</Label>
                                         <div className="font-medium">{requestNumber}</div>
                                     </div>
                                 )}
                                 <div className="space-y-1">
-                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Р¤Р°Р№Р»</Label>
+                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Файл</Label>
                                     <div className="font-medium flex items-center gap-2">
                                         <FileText className="h-4 w-4" />
-                                        {file ? file.name : "Р‘РµР· С„Р°Р№Р»Р° (СЂСѓС‡РЅРѕР№ СЃР±РѕСЂ)"}
+                                        {file ? file.name : "Без файла (ручной сбор)"}
                                     </div>
                                 </div>
                             </div>
@@ -652,9 +652,9 @@ export default function NewShipmentPage() {
                                     <div className="flex items-center justify-between mb-4">
                                         <h4 className="font-bold flex items-center gap-2">
                                             <Package className="h-4 w-4" />
-                                            РўРѕРІР°СЂС‹
+                                            Товары
                                         </h4>
-                                        <Badge>{Object.keys(mappings).length} РїРѕР·РёС†РёР№</Badge>
+                                        <Badge>{Object.keys(mappings).length} позиций</Badge>
                                     </div>
                                     <div className="space-y-2 max-h-[200px] overflow-y-auto">
                                         {parsedItems
@@ -662,7 +662,7 @@ export default function NewShipmentPage() {
                                             .map((item, i) => (
                                                 <div key={i} className="flex justify-between text-sm py-1 border-b border-border/50 last:border-0">
                                                     <span className="truncate pr-4">{item.originalName}</span>
-                                                    <span className="font-mono">{item.quantity} С€С‚</span>
+                                                    <span className="font-mono">{item.quantity} шт</span>
                                                 </div>
                                             ))}
                                     </div>
@@ -673,16 +673,16 @@ export default function NewShipmentPage() {
                                 <div className="p-4 rounded-lg bg-orange-50 border border-orange-200 text-orange-800 flex items-start gap-3">
                                     <Info className="h-5 w-5 shrink-0" />
                                     <div className="text-sm">
-                                        Р’С‹ СЃРѕР·РґР°РµС‚Рµ РїСѓСЃС‚СѓСЋ РѕС‚РіСЂСѓР·РєСѓ. РўРѕРІР°СЂС‹ РЅСѓР¶РЅРѕ Р±СѓРґРµС‚ РґРѕР±Р°РІР»СЏС‚СЊ РІСЂСѓС‡РЅСѓСЋ СЃРєР°РЅРёСЂРѕРІР°РЅРёРµРј РёР»Рё РїРѕРёСЃРєРѕРј РїРѕ РєР°С‚Р°Р»РѕРіСѓ.
+                                        Вы создаете пустую отгрузку. Товары нужно будет добавлять вручную сканированием или поиском по каталогу.
                                     </div>
                                 </div>
                             )}
                         </CardContent>
                         <CardFooter className="px-2 md:px-6 flex justify-between">
-                            <Button variant="ghost" onClick={() => setStep("mapping")}>РќР°Р·Р°Рґ</Button>
+                            <Button variant="ghost" onClick={() => setStep("mapping")}>Назад</Button>
                             <Button onClick={handleFinish} className="bg-green-600 hover:bg-green-700 text-white">
                                 <CheckCircle2 className="mr-2 h-4 w-4" />
-                                РЎРѕР·РґР°С‚СЊ РѕС‚РіСЂСѓР·РєСѓ
+                                Создать отгрузку
                             </Button>
                         </CardFooter>
                     </Card>
@@ -691,4 +691,6 @@ export default function NewShipmentPage() {
         </div>
     );
 }
+
+
 

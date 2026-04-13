@@ -52,7 +52,7 @@ export default function ShipmentDashboard() {
     // Duplicate scan confirmation
     const [duplicateScanPending, setDuplicateScanPending] = useState<{ code: string; item: ShippingItem } | null>(null);
 
-    // Unknown barcode → product mapping
+    // Unknown barcode РІвЂ вЂ™ product mapping
     const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
     const [selectedProductForBarcode, setSelectedProductForBarcode] = useState<string>("");
     const [barcodeProductSearch, setBarcodeProductSearch] = useState("");
@@ -63,7 +63,7 @@ export default function ShipmentDashboard() {
             if (data) {
                 setSession(data);
             } else {
-                toast.error("Сессия не найдена");
+                toast.error("Р РЋР ВµРЎРѓРЎРѓР С‘РЎРЏ Р Р…Р Вµ Р Р…Р В°Р в„–Р Т‘Р ВµР Р…Р В°");
                 router.push('/shipments');
             }
             setLoading(false);
@@ -74,7 +74,7 @@ export default function ShipmentDashboard() {
         void loadData();
     }, [id, router]);
 
-    const warehouseName = warehouses?.find(w => w.id === session?.warehouseId)?.name || session?.warehouseId || "Склад";
+    const warehouseName = warehouses?.find(w => w.id === session?.warehouseId)?.name || session?.warehouseId || "Р РЋР С”Р В»Р В°Р Т‘";
 
     const handleCardClick = (item: ShippingItem) => {
         router.push(`/shipments/${id}/scan/${item.id}`);
@@ -95,47 +95,48 @@ export default function ShipmentDashboard() {
     const handleConfirmDuplicate = () => {
         if (!duplicateScanPending) return;
         sounds.info();
-        toast.success(`Товар найден: повторное сканирование`);
+        toast.success(`Р СћР С•Р Р†Р В°РЎР‚ Р Р…Р В°Р в„–Р Т‘Р ВµР Р…: Р С—Р С•Р Р†РЎвЂљР С•РЎР‚Р Р…Р С•Р Вµ РЎРѓР С”Р В°Р Р…Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р С‘Р Вµ`);
         router.push(`/shipments/${id}/scan/${duplicateScanPending.item.id}`);
         setDuplicateScanPending(null);
     };
 
-    // Handle unknown barcode → map to product and add
+    // Handle unknown barcode РІвЂ вЂ™ map to product and add
     const handleMapBarcodeToProduct = async () => {
         if (!unknownBarcode || !selectedProductForBarcode || !session) return;
 
         const product = products?.find(p => p.id === selectedProductForBarcode);
         if (!product) return;
 
-        // Check if product already in session
-        let existingItem = session.items.find(i => i.productId === product.id);
+        try {
+            const existingItem = session.items.find(i => i.productId === product.id);
 
-        if (existingItem) {
-            // Add scan to existing item
-            await shippingService.updateItem(id, existingItem.id, 1, false, unknownBarcode);
-            await loadData();
-            sounds.success();
-            toast.success(`ШК привязан и отсканирован: ${product.name}`);
-        } else {
-            // Add new item + scan
-            const newItem = await shippingService.addItem(id, {
-                productId: product.id,
-                originalName: product.name,
-                sku: product.sku,
-                quantity: 0,
-                expectedQuantity: 0,
-            });
-            await shippingService.updateItem(id, newItem.id, 1, false, unknownBarcode);
-            await loadData();
-            sounds.success();
-            toast.success(`Новый товар добавлен и отсканирован: ${product.name}`);
+            if (existingItem) {
+                await shippingService.updateItem(id, existingItem.id, 1, false, unknownBarcode);
+                await loadData();
+                sounds.success();
+                toast.success(`ШК привязан и отсканирован: ${product.name}`);
+            } else {
+                const newItem = await shippingService.addItem(id, {
+                    productId: product.id,
+                    originalName: product.name,
+                    sku: product.sku,
+                    quantity: 0,
+                    expectedQuantity: 0,
+                });
+                await shippingService.updateItem(id, newItem.id, 1, false, unknownBarcode);
+                await loadData();
+                sounds.success();
+                toast.success(`Новый товар добавлен и отсканирован: ${product.name}`);
+            }
+
+            setUnknownBarcode(null);
+            setSelectedProductForBarcode('');
+            setBarcodeProductSearch('');
+        } catch (error) {
+            sounds.error();
+            toast.error(error instanceof Error ? error.message : 'РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРёРІСЏР·Р°С‚СЊ С€С‚СЂРёС…РєРѕРґ');
         }
-
-        setUnknownBarcode(null);
-        setSelectedProductForBarcode("");
-        setBarcodeProductSearch("");
     };
-
     // Scan detection on overview page
     useScanDetection({
         onScan: async (code) => {
@@ -164,10 +165,10 @@ export default function ShipmentDashboard() {
                     }
 
                     sounds.info();
-                    toast.success(`Товар найден: ${product.name}`);
+                    toast.success(`Р СћР С•Р Р†Р В°РЎР‚ Р Р…Р В°Р в„–Р Т‘Р ВµР Р…: ${product.name}`);
                     router.push(`/shipments/${id}/scan/${item.id}`);
                 } else {
-                    // Product exists in DB but not in session — check duplicate first
+                    // Product exists in DB but not in session РІР‚вЂќ check duplicate first
                     const existingScanned = findExistingItemByBarcode(cleanCode);
                     if (existingScanned) {
                         sounds.warning();
@@ -187,10 +188,10 @@ export default function ShipmentDashboard() {
                         await shippingService.updateItem(id, newItem.id, 1, false, cleanCode);
                         await loadData();
                         sounds.success();
-                        toast.success(`Добавлен и отсканирован: ${product.name}`);
+                        toast.success(`Р вЂќР С•Р В±Р В°Р Р†Р В»Р ВµР Р… Р С‘ Р С•РЎвЂљРЎРѓР С”Р В°Р Р…Р С‘РЎР‚Р С•Р Р†Р В°Р Р…: ${product.name}`);
                     } else {
                         sounds.error();
-                        toast.error(`Товар "${product.name}" не входит в накладную отгрузки`);
+                        toast.error(`Р СћР С•Р Р†Р В°РЎР‚ "${product.name}" Р Р…Р Вµ Р Р†РЎвЂ¦Р С•Р Т‘Р С‘РЎвЂљ Р Р† Р Р…Р В°Р С”Р В»Р В°Р Т‘Р Р…РЎС“РЎР‹ Р С•РЎвЂљР С–РЎР‚РЎС“Р В·Р С”Р С‘`);
                     }
                 }
             } else {
@@ -217,7 +218,7 @@ export default function ShipmentDashboard() {
 
         const existing = session.items.find(i => i.productId === productId);
         if (existing) {
-            toast.info("Товар уже в списке");
+            toast.info("Р СћР С•Р Р†Р В°РЎР‚ РЎС“Р В¶Р Вµ Р Р† РЎРѓР С—Р С‘РЎРѓР С”Р Вµ");
             setIsAddItemOpen(false);
             return;
         }
@@ -230,7 +231,7 @@ export default function ShipmentDashboard() {
             expectedQuantity: 0,
         });
         await loadData();
-        toast.success("Товар добавлен в список");
+        toast.success("Р СћР С•Р Р†Р В°РЎР‚ Р Т‘Р С•Р В±Р В°Р Р†Р В»Р ВµР Р… Р Р† РЎРѓР С—Р С‘РЎРѓР С•Р С”");
         setIsAddItemOpen(false);
     };
 
@@ -245,7 +246,7 @@ export default function ShipmentDashboard() {
         } catch (error) {
             setIsStoreDeliveryDialogOpen(false);
             setStoreDeliveryPreview(null);
-            toast.error(error instanceof Error ? error.message : "Не удалось подготовить доставку в Яндекс");
+            toast.error(error instanceof Error ? error.message : "Р СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р С—Р С•Р Т‘Р С–Р С•РЎвЂљР С•Р Р†Р С‘РЎвЂљРЎРЉ Р Т‘Р С•РЎРѓРЎвЂљР В°Р Р†Р С”РЎС“ Р Р† Р Р‡Р Р…Р Т‘Р ВµР С”РЎРѓ");
         } finally {
             setIsLoadingStoreDeliveryPreview(false);
         }
@@ -259,12 +260,12 @@ export default function ShipmentDashboard() {
             await shippingService.confirmStoreDelivery(session.id);
             await loadData();
             sounds.complete();
-            toast.success("Отгрузка подтверждена и отправлена в Yandex Delivery");
+            toast.success("Р С›РЎвЂљР С–РЎР‚РЎС“Р В·Р С”Р В° Р С—Р С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р В° Р С‘ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р В»Р ВµР Р…Р В° Р Р† Yandex Delivery");
             setIsStoreDeliveryDialogOpen(false);
             setStoreDeliveryPreview(null);
         } catch (error) {
             sounds.error();
-            toast.error(error instanceof Error ? error.message : "Не удалось создать доставку в Яндекс");
+            toast.error(error instanceof Error ? error.message : "Р СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ РЎРѓР С•Р В·Р Т‘Р В°РЎвЂљРЎРЉ Р Т‘Р С•РЎРѓРЎвЂљР В°Р Р†Р С”РЎС“ Р Р† Р Р‡Р Р…Р Т‘Р ВµР С”РЎРѓ");
         } finally {
             setIsConfirmingStoreDelivery(false);
         }
@@ -275,7 +276,7 @@ export default function ShipmentDashboard() {
         const totalScanned = session.items.reduce((acc, i) => acc + (i.scannedQuantity || 0), 0);
         if (totalScanned === 0) {
             sounds.error();
-            toast.error("Нет собранных товаров");
+            toast.error("Р СњР ВµРЎвЂљ РЎРѓР С•Р В±РЎР‚Р В°Р Р…Р Р…РЎвЂ№РЎвЂ¦ РЎвЂљР С•Р Р†Р В°РЎР‚Р С•Р Р†");
             return;
         }
 
@@ -285,8 +286,8 @@ export default function ShipmentDashboard() {
         }
 
         const confirmMsg = session.destinationType === 'warehouse'
-            ? "Завершить отгрузку? Остатки будут списаны со склада и создана приемка на складе-получателе."
-            : "Завершить отгрузку? Остатки будут списаны со склада.";
+            ? "Р вЂ”Р В°Р Р†Р ВµРЎР‚РЎв‚¬Р С‘РЎвЂљРЎРЉ Р С•РЎвЂљР С–РЎР‚РЎС“Р В·Р С”РЎС“? Р С›РЎРѓРЎвЂљР В°РЎвЂљР С”Р С‘ Р В±РЎС“Р Т‘РЎС“РЎвЂљ РЎРѓР С—Р С‘РЎРѓР В°Р Р…РЎвЂ№ РЎРѓР С• РЎРѓР С”Р В»Р В°Р Т‘Р В° Р С‘ РЎРѓР С•Р В·Р Т‘Р В°Р Р…Р В° Р С—РЎР‚Р С‘Р ВµР СР С”Р В° Р Р…Р В° РЎРѓР С”Р В»Р В°Р Т‘Р Вµ-Р С—Р С•Р В»РЎС“РЎвЂЎР В°РЎвЂљР ВµР В»Р Вµ."
+            : "Р вЂ”Р В°Р Р†Р ВµРЎР‚РЎв‚¬Р С‘РЎвЂљРЎРЉ Р С•РЎвЂљР С–РЎР‚РЎС“Р В·Р С”РЎС“? Р С›РЎРѓРЎвЂљР В°РЎвЂљР С”Р С‘ Р В±РЎС“Р Т‘РЎС“РЎвЂљ РЎРѓР С—Р С‘РЎРѓР В°Р Р…РЎвЂ№ РЎРѓР С• РЎРѓР С”Р В»Р В°Р Т‘Р В°.";
 
         if (!confirm(confirmMsg)) return;
 
@@ -294,21 +295,21 @@ export default function ShipmentDashboard() {
             await shippingService.commit(id);
             await loadData();
             sounds.complete();
-            toast.success("Отгрузка завершена");
+            toast.success("Р С›РЎвЂљР С–РЎР‚РЎС“Р В·Р С”Р В° Р В·Р В°Р Р†Р ВµРЎР‚РЎв‚¬Р ВµР Р…Р В°");
         } catch (error: any) {
             console.error(error);
             sounds.error();
-            toast.error(`Ошибка: ${error?.message || "Неизвестная ошибка"}`);
+            toast.error(`Р С›РЎв‚¬Р С‘Р В±Р С”Р В°: ${error?.message || "Р СњР ВµР С‘Р В·Р Р†Р ВµРЎРѓРЎвЂљР Р…Р В°РЎРЏ Р С•РЎв‚¬Р С‘Р В±Р С”Р В°"}`);
         }
     };
 
     const handleDeleteSession = async () => {
-        if (!confirm("Удалить эту отгрузку? Все данные будут потеряны.")) return;
+        if (!confirm("Р Р€Р Т‘Р В°Р В»Р С‘РЎвЂљРЎРЉ РЎРЊРЎвЂљРЎС“ Р С•РЎвЂљР С–РЎР‚РЎС“Р В·Р С”РЎС“? Р вЂ™РЎРѓР Вµ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р В±РЎС“Р Т‘РЎС“РЎвЂљ Р С—Р С•РЎвЂљР ВµРЎР‚РЎРЏР Р…РЎвЂ№.")) return;
         try {
             await api.delete(`/shipments/${id}`).catch(() => { });
         } catch (_) { }
         router.push('/shipments');
-        toast.success("Отгрузка удалена");
+        toast.success("Р С›РЎвЂљР С–РЎР‚РЎС“Р В·Р С”Р В° РЎС“Р Т‘Р В°Р В»Р ВµР Р…Р В°");
     };
 
     const getStatusColor = (current: number, total: number, isFileBased: boolean) => {
@@ -329,7 +330,7 @@ export default function ShipmentDashboard() {
         p.sku.toLowerCase().includes(barcodeProductSearch.toLowerCase())
     ).slice(0, 10) || [];
 
-    if (loading) return <div className="p-8 flex justify-center">Загрузка...</div>;
+    if (loading) return <div className="p-8 flex justify-center">Р вЂ”Р В°Р С–РЎР‚РЎС“Р В·Р С”Р В°...</div>;
     if (!session) return null;
 
     const isFileBased = session.type === 'file';
@@ -347,7 +348,7 @@ export default function ShipmentDashboard() {
                     <div className="flex flex-col gap-4">
                         <div className="flex items-center justify-between">
                             <Button variant="ghost" size="sm" onClick={() => router.push('/shipments')}>
-                                <ArrowLeft className="mr-2 h-4 w-4" /> Назад
+                                <ArrowLeft className="mr-2 h-4 w-4" /> Р СњР В°Р В·Р В°Р Т‘
                             </Button>
 
                             <div className="flex items-center gap-2">
@@ -357,7 +358,7 @@ export default function ShipmentDashboard() {
                                     onClick={() => setIsAddConsumablesOpen(true)}
                                     disabled={!session || isCompleted}
                                 >
-                                    Добавить расходники
+                                    Р вЂќР С•Р В±Р В°Р Р†Р С‘РЎвЂљРЎРЉ РЎР‚Р В°РЎРѓРЎвЂ¦Р С•Р Т‘Р Р…Р С‘Р С”Р С‘
                                 </Button>
                             </div>
 
@@ -374,19 +375,19 @@ export default function ShipmentDashboard() {
                                             session.status === 'picking' ? 'default' :
                                                 session.status === 'packed' ? 'info' : 'secondary'
                                     } className="text-[10px]">
-                                        {session.status === 'draft' ? 'Черновик' :
-                                            session.status === 'picking' ? 'Сборка' :
-                                                session.status === 'packed' ? 'Собрано' :
-                                                    session.status === 'shipped' ? 'Отправлено' : session.status}
+                                        {session.status === 'draft' ? 'Р В§Р ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С”' :
+                                            session.status === 'picking' ? 'Р РЋР В±Р С•РЎР‚Р С”Р В°' :
+                                                session.status === 'packed' ? 'Р РЋР С•Р В±РЎР‚Р В°Р Р…Р С•' :
+                                                    session.status === 'shipped' ? 'Р С›РЎвЂљР С—РЎР‚Р В°Р Р†Р В»Р ВµР Р…Р С•' : session.status}
                                     </Badge>
                                     {session.destinationType === 'warehouse' && session.linkedReceivingId && (
                                         <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-600 border-blue-200">
-                                            Приемка создана
+                                            Р СџРЎР‚Р С‘Р ВµР СР С”Р В° РЎРѓР С•Р В·Р Т‘Р В°Р Р…Р В°
                                         </Badge>
                                     )}
                                     {session.destinationType === 'store' && session.delivery && (
                                         <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-600 border-blue-200">
-                                            {session.delivery.provider === 'YANDEX_DELIVERY' ? 'Доставка создана' : 'Доставка'}
+                                            {session.delivery.provider === 'YANDEX_DELIVERY' ? 'Р вЂќР С•РЎРѓРЎвЂљР В°Р Р†Р С”Р В° РЎРѓР С•Р В·Р Т‘Р В°Р Р…Р В°' : 'Р вЂќР С•РЎРѓРЎвЂљР В°Р Р†Р С”Р В°'}
                                         </Badge>
                                     )}
                                 </div>
@@ -399,14 +400,14 @@ export default function ShipmentDashboard() {
                                 <div className="flex justify-between items-end">
                                     <div>
                                         <div className="text-sm font-medium text-muted-foreground">
-                                            {isFileBased ? 'Прогресс сборки' : 'Собрано'}
+                                            {isFileBased ? 'Р СџРЎР‚Р С•Р С–РЎР‚Р ВµРЎРѓРЎРѓ РЎРѓР В±Р С•РЎР‚Р С”Р С‘' : 'Р РЋР С•Р В±РЎР‚Р В°Р Р…Р С•'}
                                         </div>
                                         <div className="text-3xl font-bold font-mono">
                                             {totalScanned}
                                             {isFileBased && (
                                                 <span className="text-lg text-muted-foreground font-normal"> / {totalExpected}</span>
                                             )}
-                                            <span className="text-lg text-muted-foreground font-normal"> шт</span>
+                                            <span className="text-lg text-muted-foreground font-normal"> РЎв‚¬РЎвЂљ</span>
                                         </div>
                                     </div>
                                     <div className="text-right">
@@ -416,7 +417,7 @@ export default function ShipmentDashboard() {
                                             </Badge>
                                         ) : (
                                             <Badge variant="secondary">
-                                                {session.items.length} поз.
+                                                {session.items.length} Р С—Р С•Р В·.
                                             </Badge>
                                         )}
                                     </div>
@@ -441,14 +442,14 @@ export default function ShipmentDashboard() {
                             <DialogTrigger asChild>
                                 <Button variant="outline" className="w-full h-12 border-dashed border-2">
                                     <Plus className="mr-2 h-5 w-5" />
-                                    Добавить товар вручную
+                                    Р вЂќР С•Р В±Р В°Р Р†Р С‘РЎвЂљРЎРЉ РЎвЂљР С•Р Р†Р В°РЎР‚ Р Р†РЎР‚РЎС“РЎвЂЎР Р…РЎС“РЎР‹
                                 </Button>
                             </DialogTrigger>
                             <DialogContent className="sm:max-w-md">
                                 <DialogHeader>
-                                    <DialogTitle>Добавить товар в отгрузку</DialogTitle>
+                                    <DialogTitle>Р вЂќР С•Р В±Р В°Р Р†Р С‘РЎвЂљРЎРЉ РЎвЂљР С•Р Р†Р В°РЎР‚ Р Р† Р С•РЎвЂљР С–РЎР‚РЎС“Р В·Р С”РЎС“</DialogTitle>
                                     <DialogDescription>
-                                        Выберите товар из каталога для добавления в список.
+                                        Р вЂ™РЎвЂ№Р В±Р ВµРЎР‚Р С‘РЎвЂљР Вµ РЎвЂљР С•Р Р†Р В°РЎР‚ Р С‘Р В· Р С”Р В°РЎвЂљР В°Р В»Р С•Р С–Р В° Р Т‘Р В»РЎРЏ Р Т‘Р С•Р В±Р В°Р Р†Р В»Р ВµР Р…Р С‘РЎРЏ Р Р† РЎРѓР С—Р С‘РЎРѓР С•Р С”.
                                     </DialogDescription>
                                 </DialogHeader>
                                 <div className="space-y-4 py-4">
@@ -456,7 +457,7 @@ export default function ShipmentDashboard() {
                                         <Search className="h-4 w-4 text-muted-foreground" />
                                         <input
                                             className="flex-1 bg-transparent outline-none text-sm"
-                                            placeholder="Поиск по названию или SKU..."
+                                            placeholder="Р СџР С•Р С‘РЎРѓР С” Р С—Р С• Р Р…Р В°Р В·Р Р†Р В°Р Р…Р С‘РЎР‹ Р С‘Р В»Р С‘ SKU..."
                                             value={searchTerm}
                                             onChange={e => setSearchTerm(e.target.value)}
                                         />
@@ -477,7 +478,7 @@ export default function ShipmentDashboard() {
                                         ))}
                                         {filteredProducts.length === 0 && (
                                             <div className="text-center text-sm text-muted-foreground py-4">
-                                                Ничего не найдено
+                                                Р СњР С‘РЎвЂЎР ВµР С–Р С• Р Р…Р Вµ Р Р…Р В°Р в„–Р Т‘Р ВµР Р…Р С•
                                             </div>
                                         )}
                                     </div>
@@ -514,9 +515,9 @@ export default function ShipmentDashboard() {
 
                                     <div className="mt-4 flex items-end justify-between w-full">
                                         <div className="text-xs font-medium uppercase tracking-wider opacity-60">
-                                            {current === 0 ? "Ожидание" :
-                                                isFileBased ? (current < total ? "В процессе" : current === total ? "Готово" : "Излишек") :
-                                                    "Собрано"}
+                                            {current === 0 ? "Р С›Р В¶Р С‘Р Т‘Р В°Р Р…Р С‘Р Вµ" :
+                                                isFileBased ? (current < total ? "Р вЂ™ Р С—РЎР‚Р С•РЎвЂ Р ВµРЎРѓРЎРѓР Вµ" : current === total ? "Р вЂњР С•РЎвЂљР С•Р Р†Р С•" : "Р ВР В·Р В»Р С‘РЎв‚¬Р ВµР С”") :
+                                                    "Р РЋР С•Р В±РЎР‚Р В°Р Р…Р С•"}
                                         </div>
                                         <div className="text-2xl font-bold font-mono">
                                             {current}
@@ -544,32 +545,32 @@ export default function ShipmentDashboard() {
 
                         {session.items.length === 0 && (
                             <div className="col-span-full text-center py-12 text-muted-foreground">
-                                <div className="text-lg font-medium mb-1">Список пуст</div>
-                                <div className="text-sm">Сканируйте товары или добавьте вручную</div>
+                                <div className="text-lg font-medium mb-1">Р РЋР С—Р С‘РЎРѓР С•Р С” Р С—РЎС“РЎРѓРЎвЂљ</div>
+                                <div className="text-sm">Р РЋР С”Р В°Р Р…Р С‘РЎР‚РЎС“Р в„–РЎвЂљР Вµ РЎвЂљР С•Р Р†Р В°РЎР‚РЎвЂ№ Р С‘Р В»Р С‘ Р Т‘Р С•Р В±Р В°Р Р†РЎРЉРЎвЂљР Вµ Р Р†РЎР‚РЎС“РЎвЂЎР Р…РЎС“РЎР‹</div>
                             </div>
                         )}
                     </div>
                 </div>
             </main>
 
-            {/* Fixed Footer Action — always visible */}
+            {/* Fixed Footer Action РІР‚вЂќ always visible */}
             <div className="border-t bg-background p-4 flex justify-between items-center gap-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
                 <Button
                     variant="ghost"
                     size="icon"
                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
                     onClick={handleDeleteSession}
-                    title="Удалить отгрузку"
+                    title="Р Р€Р Т‘Р В°Р В»Р С‘РЎвЂљРЎРЉ Р С•РЎвЂљР С–РЎР‚РЎС“Р В·Р С”РЎС“"
                     style={{ visibility: isPrivileged ? 'visible' : 'hidden' }}
                 >
                     <Trash2 className="h-5 w-5" />
                 </Button>
                 <div className="text-sm text-muted-foreground hidden sm:block flex-1">
                     {isCompleted
-                        ? 'Отгрузка завершена'
+                        ? 'Р С›РЎвЂљР С–РЎР‚РЎС“Р В·Р С”Р В° Р В·Р В°Р Р†Р ВµРЎР‚РЎв‚¬Р ВµР Р…Р В°'
                         : session.destinationType === 'store'
-                          ? 'Проверьте магазин и подтвердите отправку в Яндекс'
-                          : 'Нажмите на карточку для сканирования'}
+                          ? 'Р СџРЎР‚Р С•Р Р†Р ВµРЎР‚РЎРЉРЎвЂљР Вµ Р СР В°Р С–Р В°Р В·Р С‘Р Р… Р С‘ Р С—Р С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р Т‘Р С‘РЎвЂљР Вµ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С”РЎС“ Р Р† Р Р‡Р Р…Р Т‘Р ВµР С”РЎРѓ'
+                          : 'Р СњР В°Р В¶Р СР С‘РЎвЂљР Вµ Р Р…Р В° Р С”Р В°РЎР‚РЎвЂљР С•РЎвЂЎР С”РЎС“ Р Т‘Р В»РЎРЏ РЎРѓР С”Р В°Р Р…Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р С‘РЎРЏ'}
                 </div>
                 <Button
                     size="lg"
@@ -579,10 +580,10 @@ export default function ShipmentDashboard() {
                 >
                     <PackageCheck className="mr-2 h-5 w-5" />
                     {isCompleted
-                        ? 'Завершено'
+                        ? 'Р вЂ”Р В°Р Р†Р ВµРЎР‚РЎв‚¬Р ВµР Р…Р С•'
                         : session.destinationType === 'store'
-                          ? 'Подтвердить доставку'
-                          : 'Завершить отгрузку'}
+                          ? 'Р СџР С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р Т‘Р С‘РЎвЂљРЎРЉ Р Т‘Р С•РЎРѓРЎвЂљР В°Р Р†Р С”РЎС“'
+                          : 'Р вЂ”Р В°Р Р†Р ВµРЎР‚РЎв‚¬Р С‘РЎвЂљРЎРЉ Р С•РЎвЂљР С–РЎР‚РЎС“Р В·Р С”РЎС“'}
                 </Button>
             </div>
 
@@ -599,10 +600,10 @@ export default function ShipmentDashboard() {
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Truck className="h-5 w-5 text-primary" />
-                            Подтверждение доставки в Yandex Delivery
+                            Р СџР С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р С‘Р Вµ Р Т‘Р С•РЎРѓРЎвЂљР В°Р Р†Р С”Р С‘ Р Р† Yandex Delivery
                         </DialogTitle>
                         <DialogDescription>
-                            Перед отправкой проверьте магазин, контакты и состав отгрузки.
+                            Р СџР ВµРЎР‚Р ВµР Т‘ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С”Р С•Р в„– Р С—РЎР‚Р С•Р Р†Р ВµРЎР‚РЎРЉРЎвЂљР Вµ Р СР В°Р С–Р В°Р В·Р С‘Р Р…, Р С”Р С•Р Р…РЎвЂљР В°Р С”РЎвЂљРЎвЂ№ Р С‘ РЎРѓР С•РЎРѓРЎвЂљР В°Р Р† Р С•РЎвЂљР С–РЎР‚РЎС“Р В·Р С”Р С‘.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -614,7 +615,7 @@ export default function ShipmentDashboard() {
                         <div className="space-y-4 py-2">
                             {storeDeliveryPreview.warnings.length > 0 && (
                                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                                    <div className="font-medium mb-2">Что нужно заполнить перед отправкой</div>
+                                    <div className="font-medium mb-2">Р В§РЎвЂљР С• Р Р…РЎС“Р В¶Р Р…Р С• Р В·Р В°Р С—Р С•Р В»Р Р…Р С‘РЎвЂљРЎРЉ Р С—Р ВµРЎР‚Р ВµР Т‘ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С”Р С•Р в„–</div>
                                     <div className="space-y-1">
                                         {storeDeliveryPreview.warnings.map((warning) => (
                                             <div key={warning}>{warning}</div>
@@ -625,37 +626,37 @@ export default function ShipmentDashboard() {
 
                             {!storeDeliveryPreview.yandexConfigured && (
                                 <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                                    В backend не настроен токен Yandex Delivery.
+                                    Р вЂ™ backend Р Р…Р Вµ Р Р…Р В°РЎРѓРЎвЂљРЎР‚Р С•Р ВµР Р… РЎвЂљР С•Р С”Р ВµР Р… Yandex Delivery.
                                 </div>
                             )}
 
                             <div className="grid gap-4 md:grid-cols-2">
                                 <Card>
                                     <CardContent className="space-y-2 p-4">
-                                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Отправитель</div>
+                                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Р С›РЎвЂљР С—РЎР‚Р В°Р Р†Р С‘РЎвЂљР ВµР В»РЎРЉ</div>
                                         <div className="font-semibold">{storeDeliveryPreview.source.name}</div>
-                                        <div className="text-sm text-muted-foreground">{storeDeliveryPreview.source.address || "Адрес не заполнен"}</div>
-                                        <div className="text-sm">{storeDeliveryPreview.source.contactName || "Контакт не заполнен"}</div>
+                                        <div className="text-sm text-muted-foreground">{storeDeliveryPreview.source.address || "Р С’Р Т‘РЎР‚Р ВµРЎРѓ Р Р…Р Вµ Р В·Р В°Р С—Р С•Р В»Р Р…Р ВµР Р…"}</div>
+                                        <div className="text-sm">{storeDeliveryPreview.source.contactName || "Р С™Р С•Р Р…РЎвЂљР В°Р С”РЎвЂљ Р Р…Р Вµ Р В·Р В°Р С—Р С•Р В»Р Р…Р ВµР Р…"}</div>
                                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                             <Phone className="h-4 w-4" />
-                                            {storeDeliveryPreview.source.phone || "Телефон не заполнен"}
+                                            {storeDeliveryPreview.source.phone || "Р СћР ВµР В»Р ВµРЎвЂћР С•Р Р… Р Р…Р Вµ Р В·Р В°Р С—Р С•Р В»Р Р…Р ВµР Р…"}
                                         </div>
                                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                             <Mail className="h-4 w-4" />
-                                            {storeDeliveryPreview.source.email || "Email не заполнен"}
+                                            {storeDeliveryPreview.source.email || "Email Р Р…Р Вµ Р В·Р В°Р С—Р С•Р В»Р Р…Р ВµР Р…"}
                                         </div>
                                     </CardContent>
                                 </Card>
 
                                 <Card>
                                     <CardContent className="space-y-2 p-4">
-                                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Получатель</div>
+                                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Р СџР С•Р В»РЎС“РЎвЂЎР В°РЎвЂљР ВµР В»РЎРЉ</div>
                                         <div className="font-semibold">{storeDeliveryPreview.destination.name}</div>
-                                        <div className="text-sm text-muted-foreground">{storeDeliveryPreview.destination.address || "Адрес не заполнен"}</div>
-                                        <div className="text-sm">{storeDeliveryPreview.destination.contactName || "Контакт не заполнен"}</div>
+                                        <div className="text-sm text-muted-foreground">{storeDeliveryPreview.destination.address || "Р С’Р Т‘РЎР‚Р ВµРЎРѓ Р Р…Р Вµ Р В·Р В°Р С—Р С•Р В»Р Р…Р ВµР Р…"}</div>
+                                        <div className="text-sm">{storeDeliveryPreview.destination.contactName || "Р С™Р С•Р Р…РЎвЂљР В°Р С”РЎвЂљ Р Р…Р Вµ Р В·Р В°Р С—Р С•Р В»Р Р…Р ВµР Р…"}</div>
                                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                             <Phone className="h-4 w-4" />
-                                            {storeDeliveryPreview.destination.phone || "Телефон не заполнен"}
+                                            {storeDeliveryPreview.destination.phone || "Р СћР ВµР В»Р ВµРЎвЂћР С•Р Р… Р Р…Р Вµ Р В·Р В°Р С—Р С•Р В»Р Р…Р ВµР Р…"}
                                         </div>
                                         {storeDeliveryPreview.destination.comment && (
                                             <div className="rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground">
@@ -668,7 +669,7 @@ export default function ShipmentDashboard() {
 
                             <Card>
                                 <CardContent className="space-y-3 p-4">
-                                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Состав отправки</div>
+                                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Р РЋР С•РЎРѓРЎвЂљР В°Р Р† Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С”Р С‘</div>
                                     <div className="space-y-2">
                                         {storeDeliveryPreview.items.map((item) => (
                                             <div key={item.id} className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2">
@@ -676,7 +677,7 @@ export default function ShipmentDashboard() {
                                                     <div className="font-medium">{item.name}</div>
                                                     {item.sku && <div className="text-xs text-muted-foreground">{item.sku}</div>}
                                                 </div>
-                                                <Badge variant="secondary">{item.quantity} шт.</Badge>
+                                                <Badge variant="secondary">{item.quantity} РЎв‚¬РЎвЂљ.</Badge>
                                             </div>
                                         ))}
                                     </div>
@@ -694,7 +695,7 @@ export default function ShipmentDashboard() {
                             }}
                             disabled={isConfirmingStoreDelivery}
                         >
-                            Отмена
+                            Р С›РЎвЂљР СР ВµР Р…Р В°
                         </Button>
                         <Button
                             onClick={handleConfirmStoreDelivery}
@@ -707,10 +708,10 @@ export default function ShipmentDashboard() {
                             {isConfirmingStoreDelivery ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Отправка...
+                                    Р С›РЎвЂљР С—РЎР‚Р В°Р Р†Р С”Р В°...
                                 </>
                             ) : (
-                                "Подтвердить и отправить в Яндекс"
+                                "Р СџР С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р Т‘Р С‘РЎвЂљРЎРЉ Р С‘ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С‘РЎвЂљРЎРЉ Р Р† Р Р‡Р Р…Р Т‘Р ВµР С”РЎРѓ"
                             )}
                         </Button>
                     </DialogFooter>
@@ -725,36 +726,36 @@ export default function ShipmentDashboard() {
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-orange-600">
                             <AlertTriangle className="h-5 w-5" />
-                            Повторное сканирование
+                            Р СџР С•Р Р†РЎвЂљР С•РЎР‚Р Р…Р С•Р Вµ РЎРѓР С”Р В°Р Р…Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р С‘Р Вµ
                         </DialogTitle>
                         <DialogDescription>
-                            Этот штрихкод уже был отсканирован ранее для товара:
+                            Р В­РЎвЂљР С•РЎвЂљ РЎв‚¬РЎвЂљРЎР‚Р С‘РЎвЂ¦Р С”Р С•Р Т‘ РЎС“Р В¶Р Вµ Р В±РЎвЂ№Р В» Р С•РЎвЂљРЎРѓР С”Р В°Р Р…Р С‘РЎР‚Р С•Р Р†Р В°Р Р… РЎР‚Р В°Р Р…Р ВµР Вµ Р Т‘Р В»РЎРЏ РЎвЂљР С•Р Р†Р В°РЎР‚Р В°:
                         </DialogDescription>
                     </DialogHeader>
                     {duplicateScanPending && (
                         <div className="py-4">
                             <div className="p-4 rounded-xl border border-orange-500/20 bg-orange-500/5">
                                 <div className="font-bold text-lg text-orange-500">{duplicateScanPending.item.originalName}</div>
-                                <div className="text-sm text-muted-foreground font-mono mt-1 opacity-80">ШК: {duplicateScanPending.code}</div>
+                                <div className="text-sm text-muted-foreground font-mono mt-1 opacity-80">Р РЃР С™: {duplicateScanPending.code}</div>
                                 <div className="text-sm font-medium mt-3 flex items-center justify-between">
-                                    <span className="text-muted-foreground">Уже отсканировано:</span>
-                                    <span className="font-mono bg-orange-500/10 px-2 py-0.5 rounded text-orange-600 dark:text-orange-400">{duplicateScanPending.item.scannedQuantity} шт</span>
+                                    <span className="text-muted-foreground">Р Р€Р В¶Р Вµ Р С•РЎвЂљРЎРѓР С”Р В°Р Р…Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р С•:</span>
+                                    <span className="font-mono bg-orange-500/10 px-2 py-0.5 rounded text-orange-600 dark:text-orange-400">{duplicateScanPending.item.scannedQuantity} РЎв‚¬РЎвЂљ</span>
                                 </div>
                             </div>
                         </div>
                     )}
                     <DialogFooter className="flex gap-2 sm:gap-0">
                         <Button variant="ghost" onClick={() => setDuplicateScanPending(null)}>
-                            Отменить
+                            Р С›РЎвЂљР СР ВµР Р…Р С‘РЎвЂљРЎРЉ
                         </Button>
                         <Button variant="default" onClick={handleConfirmDuplicate}>
-                            Да, перейти к товару
+                            Р вЂќР В°, Р С—Р ВµРЎР‚Р ВµР в„–РЎвЂљР С‘ Р С” РЎвЂљР С•Р Р†Р В°РЎР‚РЎС“
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* Unknown Barcode → Product Mapping Dialog */}
+            {/* Unknown Barcode РІвЂ вЂ™ Product Mapping Dialog */}
             <Dialog open={!!unknownBarcode} onOpenChange={(open) => {
                 if (!open) {
                     setUnknownBarcode(null);
@@ -766,26 +767,26 @@ export default function ShipmentDashboard() {
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-blue-600">
                             <Search className="h-5 w-5" />
-                            Неизвестный штрихкод
+                            Р СњР ВµР С‘Р В·Р Р†Р ВµРЎРѓРЎвЂљР Р…РЎвЂ№Р в„– РЎв‚¬РЎвЂљРЎР‚Р С‘РЎвЂ¦Р С”Р С•Р Т‘
                         </DialogTitle>
                         <DialogDescription>
-                            Штрихкод не найден в базе. Выберите, к какому товару он относится.
+                            Р РЃРЎвЂљРЎР‚Р С‘РЎвЂ¦Р С”Р С•Р Т‘ Р Р…Р Вµ Р Р…Р В°Р в„–Р Т‘Р ВµР Р… Р Р† Р В±Р В°Р В·Р Вµ. Р вЂ™РЎвЂ№Р В±Р ВµРЎР‚Р С‘РЎвЂљР Вµ, Р С” Р С”Р В°Р С”Р С•Р СРЎС“ РЎвЂљР С•Р Р†Р В°РЎР‚РЎС“ Р С•Р Р… Р С•РЎвЂљР Р…Р С•РЎРѓР С‘РЎвЂљРЎРѓРЎРЏ.
                         </DialogDescription>
                     </DialogHeader>
                     {unknownBarcode && (
                         <div className="space-y-4 py-4">
                             <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 text-center">
-                                <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1 font-bold opacity-70">Отсканированный ШК</div>
+                                <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1 font-bold opacity-70">Р С›РЎвЂљРЎРѓР С”Р В°Р Р…Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р Р…РЎвЂ№Р в„– Р РЃР С™</div>
                                 <div className="font-mono text-2xl font-black text-blue-500 select-all tracking-tight">{unknownBarcode}</div>
                             </div>
 
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1">Выберите товар для привязки</Label>
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1">Р вЂ™РЎвЂ№Р В±Р ВµРЎР‚Р С‘РЎвЂљР Вµ РЎвЂљР С•Р Р†Р В°РЎР‚ Р Т‘Р В»РЎРЏ Р С—РЎР‚Р С‘Р Р†РЎРЏР В·Р С”Р С‘</Label>
                                 <div className="flex items-center gap-2 border-2 rounded-xl px-3 py-2.5 bg-muted/30 focus-within:border-primary/50 transition-colors">
                                     <Search className="h-4 w-4 text-muted-foreground" />
                                     <input
                                         className="flex-1 bg-transparent outline-none text-sm font-medium"
-                                        placeholder="Поиск по названию или артикулу..."
+                                        placeholder="Р СџР С•Р С‘РЎРѓР С” Р С—Р С• Р Р…Р В°Р В·Р Р†Р В°Р Р…Р С‘РЎР‹ Р С‘Р В»Р С‘ Р В°РЎР‚РЎвЂљР С‘Р С”РЎС“Р В»РЎС“..."
                                         value={barcodeProductSearch}
                                         onChange={e => setBarcodeProductSearch(e.target.value)}
                                         autoFocus
@@ -812,7 +813,7 @@ export default function ShipmentDashboard() {
                                     ))}
                                     {barcodeFilteredProducts.length === 0 && (
                                         <div className="text-center text-sm text-muted-foreground py-4">
-                                            Ничего не найдено
+                                            Р СњР С‘РЎвЂЎР ВµР С–Р С• Р Р…Р Вµ Р Р…Р В°Р в„–Р Т‘Р ВµР Р…Р С•
                                         </div>
                                     )}
                                 </div>
@@ -825,10 +826,10 @@ export default function ShipmentDashboard() {
                             setSelectedProductForBarcode("");
                             setBarcodeProductSearch("");
                         }}>
-                            Отменить
+                            Р С›РЎвЂљР СР ВµР Р…Р С‘РЎвЂљРЎРЉ
                         </Button>
                         <Button onClick={handleMapBarcodeToProduct} disabled={!selectedProductForBarcode}>
-                            Привязать и добавить
+                            Р СџРЎР‚Р С‘Р Р†РЎРЏР В·Р В°РЎвЂљРЎРЉ Р С‘ Р Т‘Р С•Р В±Р В°Р Р†Р С‘РЎвЂљРЎРЉ
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -848,7 +849,7 @@ export default function ShipmentDashboard() {
                         // Ideally we should sync shippingService state or hard refresh
                         // For now we can reload data via shippingService
                         void loadData();
-                        toast.success("Отгрузка обновлена: добавлены расходники");
+                        toast.success("Р С›РЎвЂљР С–РЎР‚РЎС“Р В·Р С”Р В° Р С•Р В±Р Р…Р С•Р Р†Р В»Р ВµР Р…Р В°: Р Т‘Р С•Р В±Р В°Р Р†Р В»Р ВµР Р…РЎвЂ№ РЎР‚Р В°РЎРѓРЎвЂ¦Р С•Р Т‘Р Р…Р С‘Р С”Р С‘");
                     }}
                 />
             )}
