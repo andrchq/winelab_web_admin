@@ -20,7 +20,7 @@ const roleConfig: Record<string, { label: string; variant: "destructive" | "acce
     MANAGER: { label: "Руководство", variant: "accent" },
     WAREHOUSE: { label: "Кладовщик", variant: "info" },
     SUPPORT: { label: "Техподдержка", variant: "success" },
-    USER: { label: "Пользователь", variant: "info" },
+    USER: { label: "Техподдержка", variant: "success" },
 };
 
 export default function UsersPage() {
@@ -71,7 +71,52 @@ export default function UsersPage() {
 
         try {
             if (selectedUser) {
-                await api.patch(`/users/${selectedUser.id}`, normalizedPayload);
+                const currentRoleId = selectedUser.role && typeof selectedUser.role === 'object'
+                    ? selectedUser.role.id
+                    : undefined;
+                const currentWarehouseId = selectedUser.warehouse?.id || undefined;
+                const currentPhone = selectedUser.phone?.trim() || undefined;
+                const nextRoleId = normalizedPayload.roleId;
+
+                const patchPayload: Record<string, string | boolean | undefined> = {};
+
+                if (normalizedPayload.name !== selectedUser.name) {
+                    patchPayload.name = normalizedPayload.name;
+                }
+
+                if (normalizedPayload.email !== selectedUser.email) {
+                    patchPayload.email = normalizedPayload.email;
+                }
+
+                if (normalizedPayload.phone !== currentPhone) {
+                    patchPayload.phone = normalizedPayload.phone;
+                }
+
+                if (normalizedPayload.isActive !== selectedUser.isActive) {
+                    patchPayload.isActive = normalizedPayload.isActive;
+                }
+
+                if (nextRoleId !== currentRoleId) {
+                    patchPayload.roleId = nextRoleId;
+                }
+
+                if (nextRoleId === currentRoleId && nextRoleId && normalizedPayload.warehouseId !== currentWarehouseId) {
+                    patchPayload.warehouseId = normalizedPayload.warehouseId;
+                }
+
+                if (nextRoleId !== currentRoleId && normalizedPayload.warehouseId) {
+                    patchPayload.warehouseId = normalizedPayload.warehouseId;
+                }
+
+                if (normalizedPayload.password) {
+                    patchPayload.password = normalizedPayload.password;
+                }
+
+                if (Object.keys(patchPayload).length === 0) {
+                    return;
+                }
+
+                await api.patch(`/users/${selectedUser.id}`, patchPayload);
             } else {
                 await api.post("/users", {
                     name: normalizedPayload.name,

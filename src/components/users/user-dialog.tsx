@@ -26,6 +26,20 @@ interface FormData {
     isActive: boolean;
 }
 
+function getRolePresentation(role: Role) {
+    if (role.name === "SUPPORT" || role.name === "USER") {
+        return {
+            code: "SUPPORT",
+            description: "Техническая поддержка",
+        };
+    }
+
+    return {
+        code: role.name,
+        description: role.description,
+    };
+}
+
 const PASSWORD_LENGTH = 18;
 const UPPERCASE = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const LOWERCASE = "abcdefghijkmnopqrstuvwxyz";
@@ -44,6 +58,7 @@ const TEXT = {
     passwordRequired: "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043f\u0430\u0440\u043e\u043b\u044c",
     newPasswordLabel: "\u041d\u043e\u0432\u044b\u0439 \u043f\u0430\u0440\u043e\u043b\u044c (\u043d\u0435\u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u043e)",
     newPasswordPlaceholder: "\u041e\u0441\u0442\u0430\u0432\u044c\u0442\u0435 \u043f\u0443\u0441\u0442\u044b\u043c, \u0447\u0442\u043e\u0431\u044b \u043d\u0435 \u043c\u0435\u043d\u044f\u0442\u044c",
+    currentPasswordNote: "\u0422\u0435\u043a\u0443\u0449\u0438\u0439 \u043f\u0430\u0440\u043e\u043b\u044c \u043d\u0435 \u043c\u043e\u0436\u0435\u0442 \u0431\u044b\u0442\u044c \u043f\u043e\u043a\u0430\u0437\u0430\u043d: \u043e\u043d \u0445\u0440\u0430\u043d\u0438\u0442\u0441\u044f \u0432 \u0432\u0438\u0434\u0435 \u0445\u0435\u0448\u0430. \u041d\u0438\u0436\u0435 \u043c\u043e\u0436\u043d\u043e \u0437\u0430\u0434\u0430\u0442\u044c \u043d\u043e\u0432\u044b\u0439 \u043f\u0430\u0440\u043e\u043b\u044c.",
     roleLabel: "\u0420\u043e\u043b\u044c",
     rolePlaceholder: "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0440\u043e\u043b\u044c",
     rolesLoading: "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0440\u043e\u043b\u0435\u0439...",
@@ -88,6 +103,7 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
     const passwordValue = watch("password") || "";
     const selectedRoleId = watch("roleId") || "";
     const selectedRoleName = roles.find((role: Role) => role.id === selectedRoleId)?.name;
+    const availableRoles = roles.filter((role) => !(role.name === "USER" && roles.some((item) => item.name === "SUPPORT")));
 
     useEffect(() => {
         if (!open) {
@@ -200,6 +216,15 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                    <input
+                        type="hidden"
+                        {...register("roleId", { required: TEXT.rolePlaceholder })}
+                    />
+                    <input
+                        type="hidden"
+                        {...register("warehouseId")}
+                    />
+
                     <div className="space-y-2">
                         <Label htmlFor="name">{TEXT.nameLabel}</Label>
                         <Input
@@ -242,6 +267,7 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
                     {user && (
                         <div className="space-y-2">
                             <Label htmlFor="password">{TEXT.newPasswordLabel}</Label>
+                            <p className="text-xs text-muted-foreground">{TEXT.currentPasswordNote}</p>
                             <div className="flex items-center gap-2">
                                 <Input
                                     id="password"
@@ -288,11 +314,14 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
                                 {rolesLoading ? (
                                     <div className="p-2 text-center text-sm text-muted-foreground">{TEXT.rolesLoading}</div>
                                 ) : (
-                                    roles?.map((role: Role) => (
+                                    availableRoles.map((role: Role) => {
+                                        const presentation = getRolePresentation(role);
+                                        return (
                                         <SelectItem key={role.id} value={role.id}>
-                                            {role.name} {role.description && <span className="text-muted-foreground text-xs ml-2">({role.description})</span>}
+                                            {presentation.code} {presentation.description && <span className="text-muted-foreground text-xs ml-2">({presentation.description})</span>}
                                         </SelectItem>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </SelectContent>
                         </Select>

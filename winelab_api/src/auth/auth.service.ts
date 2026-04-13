@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, User } from '@prisma/client';
@@ -40,13 +40,23 @@ type AuthenticatedUser = User & {
 };
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
+    private readonly logger = new Logger(AuthService.name);
+
     constructor(
         private usersService: UsersService,
         private jwtService: JwtService,
         private configService: ConfigService,
         private prisma: PrismaService,
     ) { }
+
+    async onModuleInit() {
+        try {
+            await this.syncSystemRoles();
+        } catch (error) {
+            this.logger.error('Failed to sync system roles', error instanceof Error ? error.stack : undefined);
+        }
+    }
 
     async login(loginDto: LoginDto): Promise<TokenResponse> {
         const user = await this.usersService.findByEmail(loginDto.email);
@@ -181,6 +191,14 @@ export class AuthService {
         return this.buildTokenResponse(user);
     }
 
+    private async syncSystemRoles() {
+        await this.prisma.$transaction(async (tx) => {
+            await this.ensureBasePermissionsAndRoles(tx);
+        }, {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        });
+    }
+
     private async ensureBasePermissionsAndRoles(tx: Prisma.TransactionClient) {
         const permissions = Object.values(SystemPermission);
 
@@ -200,6 +218,32 @@ export class AuthService {
                 permission.startsWith(prefix),
             ) || permission.startsWith('REQUEST'),
         );
+
+        const supportPermissions = [
+            SystemPermission.STORE_READ,
+            SystemPermission.PRODUCT_READ,
+            SystemPermission.REQUEST_READ,
+            SystemPermission.REQUEST_CREATE,
+        ];
+
+        const legacyUserRole = await tx.role.findUnique({
+            where: { name: 'USER' },
+        });
+
+        const supportRole = await tx.role.findUnique({
+            where: { name: 'SUPPORT' },
+        });
+
+        if (legacyUserRole && !supportRole) {
+            await tx.role.update({
+                where: { id: legacyUserRole.id },
+                data: {
+                    name: 'SUPPORT',
+                    description: 'Technical Support',
+                    isSystem: true,
+                },
+            });
+        }
 
         const roleConfigs = [
             { name: 'ADMIN', description: 'Administrator', permissions, isSystem: true },
@@ -221,14 +265,9 @@ export class AuthService {
                 isSystem: true,
             },
             {
-                name: 'USER',
-                description: 'Regular User',
-                permissions: [
-                    SystemPermission.STORE_READ,
-                    SystemPermission.PRODUCT_READ,
-                    SystemPermission.REQUEST_READ,
-                    SystemPermission.REQUEST_CREATE,
-                ],
+                name: 'SUPPORT',
+                description: 'Technical Support',
+                permissions: supportPermissions,
                 isSystem: true,
             },
         ];
