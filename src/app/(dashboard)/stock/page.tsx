@@ -4,19 +4,15 @@ import { useSearchParams } from "next/navigation";
 
 import { useState, useMemo, Fragment } from "react";
 
-import { Warehouse, Filter, AlertTriangle, TrendingDown, Package, Edit2, Info } from "lucide-react";
+import { Warehouse, Filter, AlertTriangle, Package, Edit2, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, StatCard } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { useStockItems, useWarehouses } from "@/lib/hooks";
 import { AddStockDialog } from "@/components/stock/add-stock-dialog";
 import { AddProductDialog } from "@/components/stock/add-product-dialog";
 import { StockManagerDialog } from "@/components/stock/stock-manager-dialog";
 import { StockItem, Product } from "@/types/api";
-import { api } from "@/lib/api";
-import { toast } from "sonner"; // Assuming sonner is installed or will be fixed if not
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -31,9 +27,9 @@ interface GroupedStock {
 }
 
 export default function StockPage() {
-    const { data: stockItems, isLoading: stockLoading, refetch: refetchStock } = useStockItems();
+    const { isLoading: stockLoading, refetch: refetchStock } = useStockItems();
     const { data: warehouses, isLoading: warehousesLoading, refetch: refetchWarehouses } = useWarehouses();
-    const { hasPermission } = useAuth();
+    const { hasPermission, hasRole } = useAuth();
 
     const searchParams = useSearchParams();
     const initialLowStock = searchParams.get('filter') === 'low';
@@ -55,7 +51,7 @@ export default function StockPage() {
         await Promise.all([refetchStock(), refetchWarehouses()]);
     };
 
-    const canManageStock = hasPermission(['STOCK_UPDATE']);
+    const canManageStock = hasPermission(['STOCK_UPDATE']) || hasRole(['ADMIN', 'MANAGER', 'WAREHOUSE']);
     const canManageProducts = hasPermission(['PRODUCT_CREATE']);
 
     const displayStockItems = useMemo(() => {
@@ -137,14 +133,16 @@ export default function StockPage() {
 
 
     const handleEditClick = (group: GroupedStock) => {
-        if (group.product.accountingType !== 'QUANTITY') {
+        const editableItems = group.items.filter((item) => item.source !== 'ASSET_AGGREGATE');
+
+        if (editableItems.length === 0) {
             return;
         }
 
         setManagerState({
             open: true,
             product: group.product,
-            items: stockItems.filter((item) => item.productId === group.product.id)
+            items: editableItems,
         });
     };
 
@@ -285,7 +283,7 @@ export default function StockPage() {
                                             </td>
                                         </tr>
                                     ) : (
-                                        filteredGroups.map((group, index) => {
+                                        filteredGroups.map((group) => {
                                             const fillPercent = Math.min(100, (group.available / (group.totalMin || 1)) * 100);
                                             const isExpanded = expandedGroup === group.product.id;
 
@@ -377,7 +375,7 @@ export default function StockPage() {
                                                             </div>
                                                         </td>
                                                         <td onClick={(e) => e.stopPropagation()}>
-                                                            {canManageStock && group.product.accountingType === 'QUANTITY' && (
+                                                            {canManageStock && group.items.some((item) => item.source !== 'ASSET_AGGREGATE') && (
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="sm"

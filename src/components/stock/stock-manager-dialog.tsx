@@ -21,10 +21,10 @@ interface StockManagerDialogProps {
 
 export function StockManagerDialog({ open, onOpenChange, product, stockItems, onSuccess }: StockManagerDialogProps) {
     const { data: warehouses } = useWarehouses();
-    const { hasPermission } = useAuth();
+    const { hasPermission, hasRole } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
 
-    const canEditSettings = hasPermission(['STOCK_UPDATE']);
+    const canEditSettings = hasPermission(['STOCK_UPDATE']) || hasRole(['ADMIN', 'MANAGER', 'WAREHOUSE']);
 
 
     // Form State
@@ -75,14 +75,17 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
             }
 
             await Promise.all(warehouseStates.map(async (state) => {
-                const originalItem = stockItems.find(si => si.warehouseId === state.id);
+                const originalItem = stockItems.find((si) => si.warehouseId === state.id && si.source !== 'ASSET_AGGREGATE');
+                const originalReserved = originalItem?.reserved || 0;
                 const originalMin = originalItem?.minQuantity || 0;
+                const hasReservedChange = state.reserved !== originalReserved;
                 const hasMinChange = state.minQuantity !== originalMin;
 
-                if (!hasMinChange) return;
+                if (!hasReservedChange && !hasMinChange) return;
 
                 if (originalItem) {
                     await api.patch(`/stock/${originalItem.id}`, {
+                        reserved: state.reserved,
                         minQuantity: state.minQuantity
                     });
                 } else {
@@ -174,9 +177,17 @@ export function StockManagerDialog({ open, onOpenChange, product, stockItems, on
                                             <td className="p-3 text-muted-foreground">{state.currentQty}</td>
                                             <td className="p-3">
                                                 <Input
+                                                    type="number"
+                                                    min="0"
                                                     value={state.reserved}
-                                                    disabled
-                                                    className="bg-muted"
+                                                    disabled={!canEditSettings}
+                                                    className={!canEditSettings ? "bg-muted" : undefined}
+                                                    onChange={(e) => {
+                                                        const val = Math.max(0, parseInt(e.target.value) || 0);
+                                                        const newStates = [...warehouseStates];
+                                                        newStates[index].reserved = Math.min(val, state.currentQty);
+                                                        setWarehouseStates(newStates);
+                                                    }}
                                                 />
                                             </td>
                                             <td className="p-3">
